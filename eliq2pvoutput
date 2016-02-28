@@ -1,0 +1,170 @@
+#!/usr/bin/env python3
+
+# Copyright (c) 2016 Erik Johansson <erik@ejohansson.se>
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+# USA
+
+from eliq import EliqOnline
+from pvoutput import PvOutput, DefaultStatus
+
+from datetime import date, datetime, time, timedelta
+
+import argparse
+import configparser
+import logging
+import sqlite3
+
+
+def initialize_database(path):
+    conn = sqlite3.connect(path, detect_types=sqlite3.PARSE_COLNAMES)
+    cur = conn.cursor()
+    cur.execute(
+        '''CREATE TABLE IF NOT EXISTS eliq_day_data
+        (date TEXT PRIMARY KEY, avgpower INTEGEAR, energy INTEGEAR)''')
+    cur.execute(
+        '''CREATE TABLE IF NOT EXISTS eliq_6min_data
+        (timestamp TEXT PRIMARY KEY, avgpower INTEGEAR, energy INTEGEAR)''')
+    conn.commit()
+    return conn
+
+
+def save_day_data(conn, eliq):
+    cur = conn.cursor()
+    result = cur.execute(
+        '''SELECT date as "date [date]" FROM eliq_day_data
+        ORDER BY date DESC LIMIT 1''')
+
+    start = result.fetchone()
+    if start is not None:
+        # Start at the next day
+        start = start[0] + timedelta(days=1)
+    else:
+        # Default is to start one month back
+        start = date.today() - timedelta(days=30)
+    end = date.today()
+
+    entries = []
+    while start < end:
+        data = eliq.get_day_data(start, end)
+        for entry in data.data:
+            assert((entry.time_end - entry.time_start).days == 1)
+            entries.append((entry.time_start.date(),
+                            int(entry.avgpower),
+                            int(entry.energy)))
+        start = data.enddate.date()
+
+    if entries:
+        cur.executemany('INSERT INTO eliq_day_data VALUES (?, ?, ?)', entries)
+        conn.commit()
+
+
+def save_6min_data(conn, eliq):
+    cur = conn.cursor()
+    result = cur.execute(
+        '''SELECT timestamp as "timestamp [timestamp]"
+        FROM eliq_6min_data ORDER BY timestamp DESC LIMIT 1''')
+
+    start = result.fetchone()
+    if start is not None:
+        start = start[0]
+    else:
+        # Try to get start date from eliq_day_data instead
+        result = cur.execute(
+            '''SELECT date as "date [date]" FROM eliq_day_data
+            ORDER BY date ASC LIMIT 1''')
+        start = result.fetchone()
+        if start is not None:
+            start = datetime.combine(start[0], time())
+
+    if start is None:
+        start = datetime.now() - timedelta(days=1)
+
+    end = datetime.now().replace(second=0, microsecond=0)
+    end = end - timedelta(minutes=5)
+
+    while start < end:
+        entries = []
+        data = eliq.get_6min_data(start)
+        for entry in data.data:
+            assert(entry.time_start.date() == entry.time_end.date()
+                   or entry.time_end.time() == time(0, 0, 0))
+            assert((entry.time_end - entry.time_start).seconds == 6 * 60)
+            entries.append((entry.time_end,
+                            int(entry.avgpower),
+                            int(entry.energy)))
+        start = data.enddate
+        cur.executemany('INSERT INTO eliq_6min_data VALUES (?, ?, ?)', entries)
+        conn.commit()
+
+
+def main():
+    logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s')
+
+    parser = argparse.ArgumentParser(
+        description="Connect ELIQ Online to PVoutput.org")
+    parser.add_argument('config', help="Configuration file to use")
+    parser.add_argument('database', help="Path to database")
+    parser.add_argument('-d', '--debug', help="Enable debug output",
+                        action="store_true")
+    parser.add_argument('-n', '--dry-run', help="Don't send any data",
+                        action="store_true")
+    args = parser.parse_args()
+
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    config = configparser.ConfigParser()
+    config['eliq'] = {}
+    config['pvoutput'] = {}
+    config.read(args.config)
+
+    if not config['eliq'].get('accesstoken'):
+        config['eliq']['accesstoken'] = input("ELIQ Online access token: ")
+
+    if not config['pvoutput'].get('apikey'):
+        config['pvoutput']['apikey'] = input("PVOutput API key: ")
+    if not config['pvoutput'].get('systemid'):
+        config['pvoutput']['systemid'] = input("PVOutput System Id: ")
+
+    with open(args.config, 'w') as f:
+        config.write(f)
+
+    conn = initialize_database(args.database)
+    eliq = EliqOnline(config['eliq']['accesstoken'])
+
+    # Update eliq data
+    save_day_data(conn, eliq)
+    save_6min_data(conn, eliq)
+
+    pvoutput = PvOutput(config['pvoutput']['apikey'],
+                        config['pvoutput']['systemid'],
+                        args.dry_run)
+
+    cur = conn.cursor()
+    result = cur.execute(
+        '''SELECT timestamp as "timstamp [timestamp]", sum(energy), avgpower
+        from eliq_6min_data WHERE date(timestamp) = date("now")''')
+    if result is not None:
+        data = result.fetchone()
+        status = DefaultStatus._replace(
+            datetime=data[0],
+            energy_consumption=data[1],
+            power_consumption=data[2])
+        pvoutput.add_status(status, net=True)
+
+
+if __name__ == '__main__':
+    main()
