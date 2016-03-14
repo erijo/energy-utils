@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+
+# Copyright (c) 2016 Erik Johansson <erik@ejohansson.se>
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+# USA
+
+from sma import detect_inverters
+from pvoutput import PvOutput, DefaultStatus
+
+from datetime import date, datetime, time, timedelta
+
+import argparse
+import configparser
+import logging
+
+
+def get_current_temperature(protocol=None, model=None, id=None):
+    try:
+        from tellcore import telldus
+        limit = datetime.now() - timedelta(minutes=30)
+        for sensor in telldus.TelldusCore().sensors():
+            if not sensor.has_temperature():
+                continue
+            if protocol is not None and sensor.protocol != protocol:
+                continue
+            if model is not None and sensor.model != model:
+                continue
+            if id is not None and sensor.id != id:
+                continue
+            temp = sensor.temperature()
+            if datetime.fromtimestamp(temp.timestamp) >= limit:
+                return float(temp.value)
+    except:
+        pass
+    return None
+
+
+def main():
+    logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s')
+
+    parser = argparse.ArgumentParser(
+        description="Connect SMA inverter to PVoutput.org")
+    parser.add_argument('config', help="Configuration file to use")
+    parser.add_argument('-d', '--debug', help="Enable debug output",
+                        action="store_true")
+    parser.add_argument('-n', '--dry-run', help="Don't send any data",
+                        action="store_true")
+    args = parser.parse_args()
+
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    config = configparser.ConfigParser()
+    config['pvoutput'] = {}
+    config.read(args.config)
+
+    modified = False
+    if not config['pvoutput'].get('apikey'):
+        config['pvoutput']['apikey'] = input("PVOutput API key: ")
+        modified = True
+    if not config['pvoutput'].get('systemid'):
+        config['pvoutput']['systemid'] = input("PVOutput System Id: ")
+        modified = True
+
+    if modified:
+        with open(args.config, 'w') as configfile:
+            config.write(configfile)
+
+    temp = get_current_temperature(protocol="oregon")
+
+    inverter = detect_inverters(sock=None, timeout=2)[0]
+    inverter.login_user("0000")
+
+    energy = inverter.get_day_yield()
+    voltage = inverter.get_dc_voltage()
+    power = inverter.get_ac_total_power()
+
+    pvoutput = PvOutput(config['pvoutput']['apikey'],
+                        config['pvoutput']['systemid'],
+                        args.dry_run)
+
+    status = DefaultStatus._replace(
+        datetime=datetime.now(),
+        energy_generation=energy,
+        power_generation=power,
+        voltage=voltage,
+        temperature=temp)
+    pvoutput.add_status(status)
+
+
+if __name__ == '__main__':
+    main()
