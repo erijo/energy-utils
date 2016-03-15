@@ -389,16 +389,23 @@ class Inverter:
             destination=self.address,
             command=DeviceDataPacket.CMD_READ_REQUEST,
             obj=0x5380)
-        packet.add_param(0x451F00)
-        packet.add_param(0x451Fff)
+        packet.add_param(0x251E00)
+        packet.add_param(0x4521FF)
 
         self.socket.send(packet.get_data())
         response = DeviceDataPacket(self.socket.recv()).decode_read_response()
-        assert(len(response) == 2)
+        assert(len(response) == 6)
         assert(response[0][0] == 1)
-        voltage = response[0][3][0]
-        voltage = 0 if voltage == -2147483648 else voltage
-        logging.debug("Got voltage %d", voltage)
+        assert(response[2][0] == 1)
+        assert(response[4][0] == 1)
+        power = response[0][3][0]
+        power = 0 if power == -2147483648 else power
+        voltage = response[2][3][0]
+        voltage = 0 if voltage == -2147483648 else voltage / 100.0
+        current = response[4][3][0]
+        current = 0 if current == -2147483648 else current / 1000.0
+        logging.debug("Got DC: %f V, %f A, %d W (calc %f W)",
+                      voltage, current, power, voltage * current)
         return voltage
 
     def get_ac_total_power(self):
@@ -453,7 +460,7 @@ class Inverter:
             command=DeviceDataPacket.CMD_READ_REQUEST,
             obj=0x5380)
         packet.add_param(0x251E00)
-        packet.add_param(0x251EFF)
+        packet.add_param(0x4521FF)
 
         self.socket.send(packet.get_data())
         response = DeviceDataPacket(self.socket.recv())
@@ -489,7 +496,7 @@ if __name__ == '__main__':
                         level=logging.DEBUG)
     #sock = MulticastSocket(ADDRESS, PORT)
     inverter = detect_inverters(sock=None, timeout=1)[0]
-    inverter.local_address = Address(1, 123456)
+    inverter.local_address = Address(1, 654321)
     inverter.login_user("0000")
     inverter.get_day_yield()
     inverter.get_dc_voltage()
