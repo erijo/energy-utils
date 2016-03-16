@@ -209,9 +209,10 @@ class DeviceDataPacket:
                     "<L", self.packet.net_data, offset)[0])
                 offset += 4
             self.data = self.packet.net_data[offset:]
-            logging.debug("Got obj=%u command=%u job_num=%u params=%s data=%d",
-                          self.obj, self.command, self.job_num, self.params,
-                          len(self.data))
+            logging.debug(
+                "Got obj=%u command=%u job_num=%u params=%s left=%d data=%d",
+                self.obj, self.command, self.job_num, self.params,
+                self.packet_count, len(self.data))
             if self.status != 0:
                 logging.debug("Status not OK")
         else:
