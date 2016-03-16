@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+
+# Copyright (c) 2016 Erik Johansson <erik@ejohansson.se>
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+# USA
+
+from eon import Eon
+from pvoutput import PvOutput, DefaultOutput
+
+from datetime import datetime, timedelta
+from getpass import getpass
+
+import argparse
+import configparser
+import logging
+
+
+def main():
+    logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s')
+
+    parser = argparse.ArgumentParser(
+        description="Connect eon.se to PVoutput.org")
+    parser.add_argument('config', help="Configuration file to use")
+    parser.add_argument('-d', '--debug', help="Enable debug output",
+                        action="store_true")
+    parser.add_argument('-n', '--dry-run', help="Don't send any data",
+                        action="store_true")
+    args = parser.parse_args()
+
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    config = configparser.ConfigParser()
+    config['eon'] = {}
+    config['pvoutput'] = {}
+    config.read(args.config)
+
+    modified = False
+    if not config['eon'].get('email'):
+        config['eon']['email'] = input("eon.se e-mail: ")
+        modified = True
+    if not config['eon'].get('password'):
+        config['eon']['password'] = getpass("eon.se password: ")
+        modified = True
+    if not config['eon'].get('import'):
+        config['eon']['import'] = input("eon.se import id: ")
+        modified = True
+    if not config['eon'].get('export'):
+        config['eon']['export'] = input("eon.se export id: ")
+        modified = True
+
+    if not config['pvoutput'].get('apikey'):
+        config['pvoutput']['apikey'] = input("PVOutput API key: ")
+        modified = True
+    if not config['pvoutput'].get('systemid'):
+        config['pvoutput']['systemid'] = input("PVOutput System Id: ")
+        modified = True
+
+    if modified:
+        with open(args.config, 'w') as configfile:
+            config.write(configfile)
+
+    eon = Eon(config['eon']['email'], config['eon']['password'])
+    eon.log_in()
+
+    yesterday = datetime.now() - timedelta(days=1)
+    imp = eon.get_month_import(config['eon']['import'], yesterday)
+    exp = eon.get_month_export(config['eon']['export'], yesterday)
+
+    eon.log_out()
+
+    pvoutput = PvOutput(config['pvoutput']['apikey'],
+                        config['pvoutput']['systemid'],
+                        args.dry_run)
+
+    output = DefaultOutput._replace(
+        datetime=yesterday,
+        exported=sum(exp[yesterday.day - 1]),
+        consumption=sum(imp[yesterday.day - 1]))
+    pvoutput.add_output(output)
+
+
+if __name__ == '__main__':
+    main()
