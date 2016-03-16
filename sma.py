@@ -19,7 +19,7 @@
 
 from binascii import hexlify
 from collections import namedtuple
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import logging
 import select
@@ -198,6 +198,7 @@ class DeviceDataPacket:
             self.job_num = v[5] & 0xf
             self.source = Address(v[6], v[7])
             self.status = v[10]
+            self.packet_count = v[11]
             self.packet_id = v[12] & ~0x8000
             self.command = v[13]
             self.obj = v[15]
@@ -220,6 +221,7 @@ class DeviceDataPacket:
             self.job_num = kwargs.get('job_num', 0)
             self.source = kwargs.get('source', Address(0, 0))
             self.status = 0
+            self.packet_count = 0
             self.packet_id = kwargs.get('packet_id')
             if self.packet_id is None:
                 self.packet_id = DeviceDataPacket.PacketId
@@ -239,7 +241,7 @@ class DeviceDataPacket:
                            0, self.job_num & 0xf,
                            self.source.susy_id, self.source.serial,
                            0, self.job_num & 0xf,
-                           self.status, 0, self.packet_id | 0x8000,
+                           self.status, self.packet_count, self.packet_id | 0x8000,
                            self.command, len(self.params), self.obj)
         for param in self.params:
             data += struct.pack("<l", param)
@@ -479,6 +481,54 @@ class Inverter:
         response = DeviceDataPacket(self.socket.recv())
         response.decode_read_response()
 
+    def get_day_data(self, start, end):
+        packet = DeviceDataPacket(
+            source=self.local_address,
+            destination=self.address,
+            command=DeviceDataPacket.CMD_READ_REQUEST,
+            obj=0x7000)
+        packet.control = 0xe0;
+        packet.add_param(int(start.timestamp()))
+        packet.add_param(int(end.timestamp()))
+
+        self.socket.send(packet.get_data())
+        while True:
+            response = DeviceDataPacket(self.socket.recv())
+
+            offset = 0
+            while offset + 12 <= len(response.data):
+                (timestamp, energy) = struct.unpack_from("<LQ", response.data, offset)
+                offset += 12
+                timestamp = datetime.fromtimestamp(timestamp)
+                logging.debug("Yield @ %s: %d Wh", timestamp, energy)
+            assert(offset == len(response.data))
+            if response.packet_count == 0:
+                break
+
+    def get_month_data(self, start, end):
+        packet = DeviceDataPacket(
+            source=self.local_address,
+            destination=self.address,
+            command=DeviceDataPacket.CMD_READ_REQUEST,
+            obj=0x7020)
+        packet.control = 0xe0;
+        packet.add_param(int(start.timestamp()))
+        packet.add_param(int(end.timestamp()))
+
+        self.socket.send(packet.get_data())
+        while True:
+            response = DeviceDataPacket(self.socket.recv())
+
+            offset = 0
+            while offset + 12 <= len(response.data):
+                (timestamp, energy) = struct.unpack_from("<LQ", response.data, offset)
+                offset += 12
+                timestamp = datetime.fromtimestamp(timestamp)
+                logging.debug("Yield @ %s: %d Wh", timestamp, energy)
+            assert(offset == len(response.data))
+            if response.packet_count == 0:
+                break
+
     def logout(self):
         logging.debug("Logging off")
         packet = DeviceDataPacket(
@@ -501,7 +551,10 @@ if __name__ == '__main__':
     inverter.get_day_yield()
     inverter.get_dc_voltage()
     inverter.get_ac_total_power()
-    #inverter.get()
+    now = datetime.now()
+    inverter.get_day_data(now - timedelta(hours=5), now)
+    inverter.get_month_data(now - timedelta(days=5), now)
+    inverter.get()
     #inverter.get2()
     #inverter.get3()
     #inverter.get4()
