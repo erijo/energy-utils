@@ -25,6 +25,10 @@ import time
 import urllib.parse
 
 
+Output = namedtuple('Output', ['datetime',
+                               'generated', 'exported', 'consumption'])
+DefaultOutput = Output(None, None, None, None)
+
 Status = namedtuple('Status', ['datetime',
                                'energy_generation', 'power_generation',
                                'energy_consumption', 'power_consumption',
@@ -66,6 +70,17 @@ class PvOutput:
 
         conn.close()
         return (status, reason, body)
+
+    def add_output(self, output):
+        params = {'d': output.datetime.strftime("%Y%m%d"),
+                  'g': value(output, 'generated', int),
+                  'e': value(output, 'exported', int),
+                  'c': value(output, 'consumption', int)}
+
+        params = {k: v for k, v in params.items() if v is not ''}
+        (status, _, _) = self.send_request("/service/r2/addoutput.jsp", params)
+        if status != http.OK:
+            raise Exception("Failed to add output")
 
     def add_status(self, status, net=None):
         params = {'d': status.datetime.strftime("%Y%m%d"),
