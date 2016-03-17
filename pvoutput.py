@@ -18,6 +18,7 @@
 # USA
 
 from collections import namedtuple
+from datetime import datetime
 
 import http.client as http
 import logging
@@ -42,6 +43,12 @@ def value(status, field, converter):
         return ''
     return str(converter(v))
 
+def result(entry, index, converter):
+    v = entry[index]
+    if v == 'NaN':
+        return None
+    return converter(v)
+
 
 class PvOutput:
     def __init__(self, apikey, systemid, dry_run=False):
@@ -54,6 +61,7 @@ class PvOutput:
         }
 
     def send_request(self, url, params):
+        params = {k: v for k, v in params.items() if v is not ''}
         logging.debug("POST to %s: %s", url, params)
         if self.dry_run:
             return (http.OK, "OK", "")
@@ -66,7 +74,9 @@ class PvOutput:
         status = response.status
         reason = response.reason
         body = response.read().decode('utf-8')
-        logging.debug("HTTP response: %d (%s): %s", status, reason, body)
+        logging.debug(
+            "HTTP response: %d (%s): %s", status, reason,
+            body if len(body) < 120 else body[0:100] + " ... " + body[-20:])
 
         conn.close()
         return (status, reason, body)
@@ -77,7 +87,6 @@ class PvOutput:
                   'e': value(output, 'exported', int),
                   'c': value(output, 'consumption', int)}
 
-        params = {k: v for k, v in params.items() if v is not ''}
         (status, _, _) = self.send_request("/service/r2/addoutput.jsp", params)
         if status != http.OK:
             raise Exception("Failed to add output")
@@ -94,7 +103,6 @@ class PvOutput:
         if net is not None:
             params['n'] = int(net)
 
-        params = {k: v for k, v in params.items() if v is not ''}
         (status, _, _) = self.send_request("/service/r2/addstatus.jsp", params)
         if status != http.OK:
             raise Exception("Failed to add status")
@@ -120,9 +128,35 @@ class PvOutput:
             if status == http.OK:
                 offset += len(entries)
                 if offset < len(data):
-                    time.sleep(10)
+                    time.sleep(10 if not self.dry_run else 0)
             elif (status == http.BAD_REQUEST and 'Load in progress' in body):
-                time.sleep(20)
+                time.sleep(20 if not self.dry_run else 0)
             else:
                 logging.error("Failed to add status batch: %s", body)
                 raise Exception("could not add status batch")
+
+    def get_status(self, date=None, history=False, asc=False, limit=None):
+        params = {'d': date.strftime("%Y%m%d") if date is not None else '',
+                  'h': 1 if history else 0,
+                  'asc': 1 if asc else 0,
+                  'limit': limit if limit is not None else 24 * 12}
+
+        (status, _, body) = self.send_request("/service/r2/getstatus.jsp",
+                                              params)
+        if status != http.OK:
+            raise Exception("Failed to get status")
+
+        statuses = []
+        for entry in body.split(";"):
+            fields = entry.split(",")
+            statuses.append(DefaultStatus._replace(
+                datetime=datetime.combine(
+                    datetime.strptime(fields[0], "%Y%m%d").date(),
+                    datetime.strptime(fields[1], "%H:%M").time()),
+                energy_generation=result(fields, 2, int),
+                power_generation=result(fields, 4 if history else 3, int),
+                energy_consumption=result(fields, 7 if history else 4, int),
+                power_consumption=result(fields, 8 if history else 5, int),
+                temperature=result(fields, 9 if history else 7, float),
+                voltage=result(fields, 10 if history else 8, float)))
+        return statuses
