@@ -60,10 +60,10 @@ class PvOutput:
             "Accept": "text/plain"
         }
 
-    def send_request(self, url, params):
+    def send_request(self, url, params, ignore_dry_run=False):
         params = {k: v for k, v in params.items() if v is not ''}
         logging.debug("POST to %s: %s", url, params)
-        if self.dry_run:
+        if self.dry_run and not ignore_dry_run:
             return (http.OK, "OK", "")
 
         conn = http.HTTPConnection('pvoutput.org')
@@ -142,11 +142,14 @@ class PvOutput:
                   'limit': limit if limit is not None else 24 * 12}
 
         (status, _, body) = self.send_request("/service/r2/getstatus.jsp",
-                                              params)
+                                              params, ignore_dry_run=True)
         if status != http.OK:
             raise Exception("Failed to get status")
 
         statuses = []
+        if not body:
+            return statuses
+
         for entry in body.split(";"):
             fields = entry.split(",")
             statuses.append(DefaultStatus._replace(
