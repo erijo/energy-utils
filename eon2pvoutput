@@ -86,6 +86,8 @@ def main():
 
     logging.debug("Found %u hours import and %u hours export for %s",
                   len(imp_day), len(exp_day), yesterday)
+    logging.debug("Import: %s", imp_day)
+    logging.debug("Export: %s", exp_day)
 
     eon.log_out()
 
@@ -129,7 +131,7 @@ def main():
     if to_send:
         pvoutput.add_batch_status(to_send)
 
-    if len(imp_day) == 24 and len(exp_day) == 24:
+    if to_send and len(imp_day) == 24 and len(exp_day) == 24:
         consumption = imp_day_sum[24]
         consumption += statuses[-1].energy_generation
         consumption -= exp_day_sum[24]
