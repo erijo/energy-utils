@@ -409,7 +409,7 @@ class Inverter:
         current = 0 if current == -2147483648 else current / 1000.0
         logging.debug("Got DC: %f V, %f A, %d W (calc %f W)",
                       voltage, current, power, voltage * current)
-        return voltage
+        return (voltage, current)
 
     def get_ac_total_power(self):
         packet = DeviceDataPacket(

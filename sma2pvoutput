@@ -85,7 +85,7 @@ def main():
     inverter.login_user("0000")
 
     energy = inverter.get_day_yield()
-    voltage = inverter.get_dc_voltage()
+    (voltage, current) = inverter.get_dc_voltage()
     power = inverter.get_ac_total_power()
 
     pvoutput = PvOutput(config['pvoutput']['apikey'],
@@ -97,7 +97,8 @@ def main():
         energy_generation=energy,
         power_generation=power,
         voltage=voltage,
-        temperature=temp)
+        temperature=temp,
+        extended_1=current)
     pvoutput.add_status(status)
 
 
