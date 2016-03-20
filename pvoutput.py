@@ -34,8 +34,11 @@ DefaultOutput = Output(None, None, None, None)
 Status = namedtuple('Status', ['datetime',
                                'energy_generation', 'power_generation',
                                'energy_consumption', 'power_consumption',
-                               'temperature', 'voltage'])
-DefaultStatus = Status(None, None, None, None, None, None, None)
+                               'temperature', 'voltage',
+                               'extended_1', 'extended_2', 'extended_3',
+                               'extended_4', 'extended_5', 'extended_6'])
+DefaultStatus = Status(None, None, None, None, None, None, None, None, None,
+                       None, None, None, None)
 
 
 def value(status, field, converter):
@@ -110,7 +113,13 @@ class PvOutput:
                   'v3': value(status, 'energy_consumption', int),
                   'v4': value(status, 'power_consumption', int),
                   'v5': value(status, 'temperature', float),
-                  'v6': value(status, 'voltage', float)}
+                  'v6': value(status, 'voltage', float),
+                  'v7': value(status, 'extended_1', float),
+                  'v8': value(status, 'extended_2', float),
+                  'v9': value(status, 'extended_3', float),
+                  'v10': value(status, 'extended_4', float),
+                  'v11': value(status, 'extended_5', float),
+                  'v12': value(status, 'extended_6', float)}
         if net is not None:
             params['n'] = int(net)
 
@@ -128,8 +137,14 @@ class PvOutput:
                      value(status, 'energy_consumption', int),
                      value(status, 'power_consumption', int),
                      value(status, 'temperature', float),
-                     value(status, 'voltage', float)]
-            data.append(','.join(entry))
+                     value(status, 'voltage', float),
+                     value(status, 'extended_1', float),
+                     value(status, 'extended_2', float),
+                     value(status, 'extended_3', float),
+                     value(status, 'extended_4', float),
+                     value(status, 'extended_5', float),
+                     value(status, 'extended_6', float)]
+            data.append(','.join(entry).rstrip(','))
         offset = 0
         while offset < len(data):
             entries = data[offset:offset + 30]
@@ -144,11 +159,13 @@ class PvOutput:
                 logging.error("Failed to add status batch: %s", body)
                 raise Exception("could not add status batch")
 
-    def get_status(self, date=None, history=False, asc=False, limit=None):
+    def get_status(self, date=None, history=False, asc=False, limit=None,
+                   extended=False):
         params = {'d': date.strftime("%Y%m%d") if date is not None else '',
                   'h': 1 if history else 0,
                   'asc': 1 if asc else 0,
-                  'limit': limit if limit is not None else 24 * 12}
+                  'limit': limit if limit is not None else 24 * 12,
+                  'ext': 1 if extended else 0}
 
         (status, _, body) = self.send_request("/service/r2/getstatus.jsp",
                                               params, ignore_dry_run=True)
@@ -171,6 +188,14 @@ class PvOutput:
                 power_consumption=result(fields, 8 if history else 5, int),
                 temperature=result(fields, 9 if history else 7, float),
                 voltage=result(fields, 10 if history else 8, float)))
+            if extended:
+                statuses[-1] = statuses[-1]._replace(
+                    extended_1 = result(fields, 11 if history else 9, float),
+                    extended_2 = result(fields, 12 if history else 10, float),
+                    extended_3 = result(fields, 13 if history else 11, float),
+                    extended_4 = result(fields, 14 if history else 12, float),
+                    extended_5 = result(fields, 15 if history else 13, float),
+                    extended_6 = result(fields, 16 if history else 14, float))
         return statuses
 
 
