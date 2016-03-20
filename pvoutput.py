@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 
 # Copyright (c) 2016 Erik Johansson <erik@ejohansson.se>
@@ -53,6 +54,7 @@ def result(entry, index, converter):
 class PvOutput:
     def __init__(self, apikey, systemid, dry_run=False):
         self.dry_run = dry_run
+        self.last_request_time = 0
         self.headers = {
             "X-Pvoutput-Apikey": apikey,
             "X-Pvoutput-SystemId": systemid,
@@ -62,12 +64,21 @@ class PvOutput:
 
     def send_request(self, url, params, ignore_dry_run=False):
         params = {k: v for k, v in params.items() if v is not ''}
-        logging.debug("POST to %s: %s", url, params)
+
         if self.dry_run and not ignore_dry_run:
+            logging.debug("POST to %s: %s (dry-run)", url, params)
             return (http.OK, "OK", "")
+
+        now = time.time()
+        time_since_last_request = now - self.last_request_time
+        if time_since_last_request < 10:
+            time.sleep(10 - time_since_last_request)
+        self.last_request_time = now
 
         conn = http.HTTPConnection('pvoutput.org')
         encoded = urllib.parse.urlencode(params)
+
+        logging.debug("POST to %s: %s", url, params)
         conn.request("POST", url, encoded, self.headers)
 
         response = conn.getresponse()
@@ -127,10 +138,8 @@ class PvOutput:
                 {"data": ";".join(entries)})
             if status == http.OK:
                 offset += len(entries)
-                if offset < len(data):
-                    time.sleep(10 if not self.dry_run else 0)
             elif (status == http.BAD_REQUEST and 'Load in progress' in body):
-                time.sleep(20 if not self.dry_run else 0)
+                time.sleep(20)
             else:
                 logging.error("Failed to add status batch: %s", body)
                 raise Exception("could not add status batch")
@@ -163,3 +172,11 @@ class PvOutput:
                 temperature=result(fields, 9 if history else 7, float),
                 voltage=result(fields, 10 if history else 8, float)))
         return statuses
+
+
+if __name__ == '__main__':
+    logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s',
+                        level=logging.DEBUG)
+    import sys
+    pvoutput = PvOutput(sys.argv[1], sys.argv[2])
+    pvoutput.get_status()
