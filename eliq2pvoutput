@@ -97,11 +97,10 @@ def save_6min_data(conn, eliq):
 
     while start < end:
         entries = []
-        data = eliq.get_6min_data(start)
+        data = eliq.get_6min_data(start, (start + timedelta(days=1)).date())
         for entry in data.data:
             assert(entry.time_start.date() == entry.time_end.date()
                    or entry.time_end.time() == time(0, 0, 0))
-            assert((entry.time_end - entry.time_start).seconds == 6 * 60)
             entries.append((entry.time_end,
                             int(entry.avgpower),
                             int(entry.energy)))
