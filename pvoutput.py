@@ -190,12 +190,12 @@ class PvOutput:
                 voltage=result(fields, 10 if history else 8, float)))
             if extended:
                 statuses[-1] = statuses[-1]._replace(
-                    extended_1 = result(fields, 11 if history else 9, float),
-                    extended_2 = result(fields, 12 if history else 10, float),
-                    extended_3 = result(fields, 13 if history else 11, float),
-                    extended_4 = result(fields, 14 if history else 12, float),
-                    extended_5 = result(fields, 15 if history else 13, float),
-                    extended_6 = result(fields, 16 if history else 14, float))
+                    extended_1=result(fields, 11 if history else 9, float),
+                    extended_2=result(fields, 12 if history else 10, float),
+                    extended_3=result(fields, 13 if history else 11, float),
+                    extended_4=result(fields, 14 if history else 12, float),
+                    extended_5=result(fields, 15 if history else 13, float),
+                    extended_6=result(fields, 16 if history else 14, float))
         return statuses
 
 
