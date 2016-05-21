@@ -55,7 +55,8 @@ def result(entry, index, converter):
 
 
 class PvOutput:
-    def __init__(self, apikey, systemid, dry_run=False):
+    def __init__(self, apikey, systemid, dry_run=False, donation_mode=None):
+        self.donation_mode = donation_mode
         self.dry_run = dry_run
         self.last_request_time = 0
         self.headers = {
@@ -82,7 +83,11 @@ class PvOutput:
         encoded = urllib.parse.urlencode(params)
 
         logging.debug("POST to %s: %s", url, params)
-        conn.request("POST", url, encoded, self.headers)
+        headers = self.headers
+        if self.donation_mode is None:
+            headers = headers.copy()
+            headers["X-Rate-Limit"] = 1
+        conn.request("POST", url, encoded, headers)
 
         response = conn.getresponse()
         status = response.status
@@ -91,6 +96,13 @@ class PvOutput:
         logging.debug(
             "HTTP response: %d (%s): %s", status, reason,
             body if len(body) < 120 else body[0:100] + " ... " + body[-20:])
+
+        if self.donation_mode is None:
+            mode = response.getheader("X-Rate-Limit-Limit")
+            self.donation_mode = mode == "300"
+            logging.debug("Donation mode: %s (limit %s/%s)",
+                          self.donation_mode,
+                          response.getheader("X-Rate-Limit-Remaining"), mode)
 
         conn.close()
         return (status, reason, body)
@@ -146,8 +158,9 @@ class PvOutput:
                      value(status, 'extended_6', float)]
             data.append(','.join(entry).rstrip(','))
         offset = 0
+        limit = 100 if self.donation_mode else 30
         while offset < len(data):
-            entries = data[offset:offset + 30]
+            entries = data[offset:offset + limit]
             (status, reason, body) = self.send_request(
                 "/service/r2/addbatchstatus.jsp",
                 {"data": ";".join(entries)})
