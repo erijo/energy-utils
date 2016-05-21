@@ -81,9 +81,16 @@ class Eon:
     SAP_SERVER = 'sapuces.eon.se'
     SAP_MONTH_ENERGY_PATH = '/eon-online/eon.consumption.month.sap'
 
-    def __init__(self, user_id, password):
+    def __init__(self, user_id, password, user_id_type=1):
+        """Class to access my pages on eon.se
+
+        user_id_type identifies the type of user_id: 1 = e-mail, 2 = social
+        security number (personnummer), 4 = customer number
+
+        """
         self.user_id = user_id
         self.password = password
+        self.user_id_type = user_id_type
         self.viewstate = None
 
     def _get_viewstate(self):
@@ -108,7 +115,7 @@ class Eon:
 
     def log_in(self):
         params = {'__VIEWSTATE': self._get_viewstate()}
-        params['m$blocks1C2R1$Login$UserIdTypeField'] = 1
+        params['m$blocks1C2R1$Login$UserIdTypeField'] = self.user_id_type
         params['m$blocks1C2R1$Login$UserIdField'] = self.user_id
         params['m$blocks1C2R1$Login$PasswordField'] = self.password
         params['m$blocks1C2R1$Login$LoginButton'] = 'Logga in'
@@ -152,9 +159,9 @@ class Eon:
         self.cookies = None
         conn.close()
 
-    def _get_month_energy(self, installation, date, role, type):
+    def _get_month_energy(self, installation_id, date, role, type):
         params = {'radioChosen': 'KWH', 'role': role, 'type': type}
-        params['installationSelector'] = installation
+        params['installationSelector'] = installation_id
         params['year'] = date.strftime("%Y")
         params['month'] = date.strftime("%m")
 
@@ -170,7 +177,7 @@ class Eon:
 
         response = conn.getresponse()
         logging.debug("GET month energy for %s returned %u (%s)",
-                      installation, response.status, response.reason)
+                      installation_id, response.status, response.reason)
         if response.status != http.OK:
             raise Exception("Failed to get month energy")
 
@@ -179,8 +186,19 @@ class Eon:
         parser = EonMonthEnergyHtmlParser()
         return parser.parse(body)
 
-    def get_month_import(self, installation, date):
-        return self._get_month_energy(installation, date, '01', 'P')
+    def get_month_import(self, installation_id, date):
+        """Get energy imported during the month given by date.
 
-    def get_month_export(self, installation, date):
-        return self._get_month_energy(installation, date, '03', 'G')
+        To get installation_id, log in to Mina Sidor and select "My
+        consumption". installation_id is the value for installationSelector
+        given in the link "Energi- och Effektstatistik".
+
+        """
+        return self._get_month_energy(installation_id, date, '01', 'P')
+
+    def get_month_export(self, installation_id, date):
+        """Get energy exported during the month given by date.
+
+        See get_month_import for description on how to get installation id.
+        """
+        return self._get_month_energy(installation_id, date, '03', 'G')
