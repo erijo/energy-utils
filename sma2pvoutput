@@ -99,7 +99,10 @@ def main():
         voltage=voltage,
         temperature=temp,
         extended_1=current)
-    pvoutput.add_status(status)
+    try:
+        pvoutput.add_status(status)
+    except:
+        logging.exception("Could not add status")
 
 
 if __name__ == '__main__':
