@@ -82,6 +82,14 @@ DataUnit = namedtuple('DataUnit', ['tag', 'version', 'data'])
 
 
 class DataPacket:
+    """A DataPacket is a sequence of DataUnit's prefixed with a header.
+
+    Each unit consists of a length, a tag (i.e. id), a version (often 0) and
+    data bytes. The first tag is "Tag0" with a group id (1 being the default
+    according to SMA energy meter protocol documentation). Then follows any
+    other units (e.g. SMA net 2). At the end there's the "end" unit.
+
+    """
     HEADER = b'SMA\0'
     TAG_0 = 42
     TAG_NET_2 = 1
@@ -116,8 +124,11 @@ class DataPacket:
                 raise MalformedPacketError("missing or malformed end tag")
             self.units.pop()
 
-    def get_data(self, extra_units=[]):
-        units = self.units + extra_units
+    def get_data(self, extra_unit=None):
+        """Returns the units as a sequence of bytes."""
+        units = self.units.copy()
+        if extra_unit is not None:
+            units.append(extra_unit)
         units.append(DataUnit(DataPacket.TAG_END, 0, None))
 
         data = DataPacket.HEADER
@@ -137,13 +148,22 @@ class DataPacket:
 
 
 class Net2DataPacket(DataPacket):
+    """SMA net 2 data packet.
+
+    Packs data bytes in a net 2 data unit. The data is prefixed with a protocol
+    ID. The format of the data depends on the protocol.
+
+    """
+
     def __init__(self, protocol=None, data=None):
         super().__init__(data=data)
+
         self.protocol = protocol
         self.net_data = b''
 
         if data is not None:
             assert(protocol is None)
+            # Extract the net 2 unit data
             units = self.units
             self.units = []
             for unit in units:
@@ -160,7 +180,7 @@ class Net2DataPacket(DataPacket):
     def get_data(self):
         data = struct.pack(">H", self.protocol) + self.net_data
         unit = DataUnit(DataPacket.TAG_NET_2, 0, data)
-        return super().get_data(extra_units=[unit])
+        return super().get_data(unit)
 
 
 # SUSy ID = SMA update system ID
