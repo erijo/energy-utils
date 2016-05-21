@@ -73,11 +73,9 @@ class PvOutput:
             logging.debug("POST to %s: %s (dry-run)", url, params)
             return (http.OK, "OK", "")
 
-        now = time.time()
-        time_since_last_request = now - self.last_request_time
+        time_since_last_request = time.time() - self.last_request_time
         if time_since_last_request < 10:
             time.sleep(10 - time_since_last_request)
-        self.last_request_time = now
 
         conn = http.HTTPConnection('pvoutput.org')
         encoded = urllib.parse.urlencode(params)
@@ -105,6 +103,7 @@ class PvOutput:
                           response.getheader("X-Rate-Limit-Remaining"), mode)
 
         conn.close()
+        self.last_request_time = time.time()
         return (status, reason, body)
 
     def add_output(self, output):
