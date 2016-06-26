@@ -423,13 +423,21 @@ class Inverter:
         assert(response[4][0] == 1)
         power = response[0][3][0]
         power = 0 if power == -2147483648 else power
+        power_b = response[1][3][0]
+        power_b = 0 if power_b == -2147483648 else power_b
         voltage = response[2][3][0]
         voltage = 0 if voltage == -2147483648 else voltage / 100.0
+        voltage_b = response[3][3][0]
+        voltage_b = 0 if voltage_b == -2147483648 else voltage_b / 100.0
         current = response[4][3][0]
         current = 0 if current == -2147483648 else current / 1000.0
-        logging.debug("Got DC: %f V, %f A, %d W (calc %f W)",
+        current_b = response[5][3][0]
+        current_b = 0 if current_b == -2147483648 else current_b / 1000.0
+        logging.debug("Got DC A: %f V, %f A, %d W (calc %f W)",
                       voltage, current, power, voltage * current)
-        return (voltage, current)
+        logging.debug("Got DC B: %f V, %f A, %d W (calc %f W)",
+                      voltage_b, current_b, power_b, voltage_b * current_b)
+        return [(voltage, current, power), (voltage_b, current_b, power_b)]
 
     def get_ac_total_power(self):
         packet = DeviceDataPacket(

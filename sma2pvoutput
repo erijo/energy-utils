@@ -85,7 +85,7 @@ def main():
     inverter.login_user("0000")
 
     energy = inverter.get_day_yield()
-    (voltage, current) = inverter.get_dc_voltage()
+    strings = inverter.get_dc_voltage()
     power = inverter.get_ac_total_power()
 
     pvoutput = PvOutput(config['pvoutput']['apikey'],
@@ -96,9 +96,14 @@ def main():
         datetime=datetime.now(),
         energy_generation=energy,
         power_generation=power,
-        voltage=voltage,
+        #voltage=voltage,
         temperature=temp,
-        extended_1=current)
+        extended_1=strings[0][1],
+        extended_2=strings[1][1],
+        extended_3=strings[0][0],
+        extended_4=strings[1][0],
+        extended_5=strings[0][2],
+        extended_6=strings[1][2])
     try:
         pvoutput.add_status(status)
     except:
