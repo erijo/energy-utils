@@ -372,6 +372,7 @@ class Inverter:
     JOB_NUM_LOGOUT = 3
 
     CODE_DAY_YIELD = 0x2622
+    CODE_TOTAL_YIELD = 0x2601
     CODE_DC_POWER = 0x251e
     CODE_DC_INPUT_VOLTAGE = 0x451f
     CODE_DC_INPUT_CURRENT = 0x4521
@@ -444,6 +445,26 @@ class Inverter:
             logging.debug("Day yield: %d Wh", energy)
         else:
             logging.debug("Inverter not started")
+        return energy
+
+    def get_total_yield(self):
+        packet = DeviceDataPacket(
+            source=self.local_address,
+            destination=self.address,
+            command=DeviceDataPacket.CMD_READ_REQUEST,
+            obj=0x5400)
+        packet.add_param(0x260100)
+        packet.add_param(0x2601FF)
+
+        self.socket.send(packet.get_data())
+        response = DeviceDataPacket(self.socket.recv()).decode_read_response()
+        assert(len(response) == 1)
+        assert(response[0].code == Inverter.CODE_TOTAL_YIELD)
+
+        energy = response[0].data
+        if energy is not None:
+            logging.debug("Total yield: %d Wh (%.3f MWh)",
+                          energy, energy / 1000.0 / 1000.0)
         return energy
 
     def get_dc_data(self):
@@ -545,54 +566,14 @@ class Inverter:
             destination=self.address,
             command=DeviceDataPacket.CMD_READ_REQUEST,
             obj=0x5800)
-        packet.add_param(0x821E00)
-        packet.add_param(0x855e00)
+        packet.add_param(0x821e00)
+        packet.add_param(0x8220ff)
 
         self.socket.send(packet.get_data())
         response = DeviceDataPacket(self.socket.recv())
         response.decode_read_response()
-        response = DeviceDataPacket(self.socket.recv())
-        response.decode_read_response()
-
-    def get2(self):
-        logging.debug("Get energy total, today")
-        packet = DeviceDataPacket(
-            source=self.local_address,
-            destination=self.address,
-            command=DeviceDataPacket.CMD_READ_REQUEST,
-            obj=0x5400)
-        packet.add_param(0x260100)
-        packet.add_param(0x2622FF)
-
-        self.socket.send(packet.get_data())
-        response = DeviceDataPacket(self.socket.recv())
-        response.decode_read_response()
-
-    def get3(self):
-        packet = DeviceDataPacket(
-            source=self.local_address,
-            destination=self.address,
-            command=DeviceDataPacket.CMD_READ_REQUEST,
-            obj=0x5380)
-        packet.add_param(0x251E00)
-        packet.add_param(0x4521FF)
-
-        self.socket.send(packet.get_data())
-        response = DeviceDataPacket(self.socket.recv())
-        response.decode_read_response()
-
-    def get4(self):
-        packet = DeviceDataPacket(
-            source=self.local_address,
-            destination=self.address,
-            command=DeviceDataPacket.CMD_READ_REQUEST,
-            obj=0x5100)
-        packet.add_param(0x00464800)
-        packet.add_param(0x004655FF)
-
-        self.socket.send(packet.get_data())
-        response = DeviceDataPacket(self.socket.recv())
-        response.decode_read_response()
+        #response = DeviceDataPacket(self.socket.recv())
+        #response.decode_read_response()
 
     def get_day_data(self, start, end):
         packet = DeviceDataPacket(
@@ -610,7 +591,8 @@ class Inverter:
 
             offset = 0
             while offset + 12 <= len(response.data):
-                (timestamp, energy) = struct.unpack_from("<LQ", response.data, offset)
+                (timestamp, energy) = struct.unpack_from(
+                    "<LQ", response.data, offset)
                 offset += 12
                 timestamp = datetime.fromtimestamp(timestamp)
                 logging.debug("Yield @ %s: %d Wh", timestamp, energy)
@@ -634,7 +616,8 @@ class Inverter:
 
             offset = 0
             while offset + 12 <= len(response.data):
-                (timestamp, energy) = struct.unpack_from("<LQ", response.data, offset)
+                (timestamp, energy) = struct.unpack_from(
+                    "<LQ", response.data, offset)
                 offset += 12
                 timestamp = datetime.fromtimestamp(timestamp)
                 logging.debug("Yield @ %s: %d Wh", timestamp, energy)
@@ -662,15 +645,12 @@ if __name__ == '__main__':
     inverter.local_address = Address(1, 654321)
     inverter.login_user("0000")
     inverter.get_day_yield()
+    inverter.get_total_yield()
     inverter.get_dc_data()
     inverter.get_ac_data()
     inverter.get_ac_total_power()
     #now = datetime.now()
     #inverter.get_day_data(now - timedelta(hours=5), now)
     #inverter.get_month_data(now - timedelta(days=5), now)
-    #inverter.get()
-    #inverter.get2()
-    #inverter.get3()
-    #inverter.get4()
+    inverter.get()
     inverter.logout()
-    #inverter.get()
