@@ -22,6 +22,7 @@ from collections import namedtuple
 from datetime import datetime, timedelta
 
 import logging
+import math
 import select
 import socket
 import struct
@@ -456,6 +457,27 @@ class Inverter:
         logging.debug("Got spot power %d W", power)
         return power
 
+    def get_ac_voltage(self):
+        packet = DeviceDataPacket(
+            source=self.local_address,
+            destination=self.address,
+            command=DeviceDataPacket.CMD_READ_REQUEST,
+            obj=0x5100)
+        packet.add_param(0x00464800)
+        packet.add_param(0x004655FF)
+
+        self.socket.send(packet.get_data())
+        response = DeviceDataPacket(self.socket.recv()).decode_read_response()
+        assert(len(response) == 6)
+        voltage = 0
+        for phase in response[0:3]:
+            v = phase[3][0]
+            v = 0 if v == 4294967295 else v / 100.0
+            voltage += v
+        voltage = math.sqrt(3) * voltage / 3
+        logging.debug("Got voltage %f", voltage)
+        return voltage
+
     def get(self):
         logging.debug("Get device name, type etc.")
         packet = DeviceDataPacket(
@@ -587,5 +609,6 @@ if __name__ == '__main__':
     #inverter.get2()
     #inverter.get3()
     #inverter.get4()
+    inverter.get_ac_voltage()
     inverter.logout()
     #inverter.get()

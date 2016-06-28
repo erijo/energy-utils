@@ -87,6 +87,7 @@ def main():
     energy = inverter.get_day_yield()
     strings = inverter.get_dc_voltage()
     power = inverter.get_ac_total_power()
+    voltage = inverter.get_ac_voltage()
 
     pvoutput = PvOutput(config['pvoutput']['apikey'],
                         config['pvoutput']['systemid'],
@@ -96,7 +97,7 @@ def main():
         datetime=datetime.now(),
         energy_generation=energy,
         power_generation=power,
-        #voltage=voltage,
+        voltage=voltage,
         temperature=temp,
         extended_1=strings[0][1],
         extended_2=strings[1][1],
