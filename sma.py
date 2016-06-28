@@ -197,6 +197,9 @@ class DeviceDataPacket:
     CMD_JOB_RESPONSE = 13
     CMD_JOB_LOGOFF = 14
 
+    ReadResponseObject = namedtuple(
+        'ReadResponseObject', ['cls', 'code', 'timestamp', 'data'])
+
     PacketId = 1
     def __init__(self, data=None, **kwargs):
         self.params = []
@@ -278,42 +281,51 @@ class DeviceDataPacket:
             (cls, code, data_type, timestamp) = struct.unpack_from(
                 "<BHBL", self.data, offset)
             offset += 8
-            response.append((cls, code, datetime.fromtimestamp(timestamp)))
+            response.append(DeviceDataPacket.ReadResponseObject(
+                cls=cls, code=code,
+                timestamp=datetime.fromtimestamp(timestamp), data=None))
             logging.debug("Got class=0x%x code=0x%x type=0x%x time=%s",
-                          cls, code, data_type, response[-1][2])
+                          cls, code, data_type, response[-1].timestamp)
             if data_type == 0x10:
                 # Text: 32 bytes of NULL terminated string
                 (text,) = struct.unpack_from("<32s", self.data, offset)
                 offset += len(text)
-                response[-1] += (text.rstrip(b'\0').decode('utf-8'),)
-                logging.debug(" -> text '%s'", response[-1][3])
+                response[-1] = response[-1]._replace(
+                    data=text.rstrip(b'\0').decode('utf-8'))
+                logging.debug(" -> text '%s'", response[-1].data)
             elif data_type == 0x8:
                 # Status: eight 32-bit words
                 attributes = struct.unpack_from("<LLLLLLLL", self.data, offset)
                 offset += 4 * len(attributes)
-                response[-1] += ([],)
+                response[-1] = response[-1]._replace(data=[])
                 for attribute in attributes:
                     tag = attribute & 0xffffff
                     is_set = attribute >> 24
                     if tag == 0xfffffe: # End tag
                         break
                     if is_set:
-                        response[-1][3].append(tag)
+                        response[-1].data.append(tag)
                     logging.debug(" -> attribute %d = %d", tag, is_set)
             elif self.obj == 0x5400:
-                # 64-bit integear
+                # 64-bit integer
                 (value,) = struct.unpack_from("<Q", self.data, offset)
                 offset += 8
-                response[-1] += (value,)
+                if value != 0xffffffffffffffff:
+                    response[-1] = response[-1]._replace(data=value)
                 logging.debug(" -> value 0x%08x (%d)", value, value)
             elif data_type == 0x0 or data_type == 0x40:
-                # Five signed 32-bit integears
+                # Five 32-bit integers
                 fmt = 5 * ("L" if data_type == 0x0 else "l")
                 values = struct.unpack_from("<%s" % fmt, self.data, offset)
                 offset += 4 * len(values)
-                response[-1] += (values,)
+                response[-1] = response[-1]._replace(data=[])
                 for value in values:
                     logging.debug(" -> value 0x%08x (%d)", abs(value), value)
+                    if ((data_type == 0x0 and value != 0xffffffff)
+                        or (data_type == 0x40 and value != -0x80000000)):
+                        response[-1].data.append(value)
+                    else:
+                        response[-1].data.append(None)
         assert(offset == len(self.data))
         return response
 
@@ -359,10 +371,31 @@ class Inverter:
     JOB_NUM_LOGIN = 1
     JOB_NUM_LOGOUT = 3
 
+    CODE_DAY_YIELD = 0x2622
+    CODE_DC_POWER = 0x251e
+    CODE_DC_INPUT_VOLTAGE = 0x451f
+    CODE_DC_INPUT_CURRENT = 0x4521
+    CODE_AC_POWER = 0x263f
+    CODE_AC_POWER_L1 = 0x4640
+    CODE_AC_POWER_L2 = 0x4641
+    CODE_AC_POWER_L3 = 0x4642
+    CODE_AC_VOLTAGE_L1 = 0x4648
+    CODE_AC_VOLTAGE_L2 = 0x4649
+    CODE_AC_VOLTAGE_L3 = 0x464a
+    CODE_AC_CURRENT_L1 = 0x4650
+    CODE_AC_CURRENT_L2 = 0x4651
+    CODE_AC_CURRENT_L3 = 0x4652
+
     def __init__(self, sock, address):
         self.socket = sock
         self.address = address
         self.local_address = Address(1, 123456)
+
+    def _to_voltage(self, voltage):
+        return voltage / 100.0 if voltage else voltage
+
+    def _to_current(self, current):
+        return current / 1000.0 if current else current
 
     def login(self, user_type, password):
         encoded = bytes(map(lambda x: ord(x) + user_type, password))
@@ -404,10 +437,16 @@ class Inverter:
         self.socket.send(packet.get_data())
         response = DeviceDataPacket(self.socket.recv()).decode_read_response()
         assert(len(response) == 1)
-        logging.debug("Got day yield %d Wh", response[0][3])
-        return response[0][3]
+        assert(response[0].code == Inverter.CODE_DAY_YIELD)
 
-    def get_dc_voltage(self):
+        energy = response[0].data
+        if energy is not None:
+            logging.debug("Day yield: %d Wh", energy)
+        else:
+            logging.debug("Inverter not started")
+        return energy
+
+    def get_dc_data(self):
         packet = DeviceDataPacket(
             source=self.local_address,
             destination=self.address,
@@ -418,27 +457,66 @@ class Inverter:
 
         self.socket.send(packet.get_data())
         response = DeviceDataPacket(self.socket.recv()).decode_read_response()
-        assert(len(response) == 6)
-        assert(response[0][0] == 1)
-        assert(response[2][0] == 1)
-        assert(response[4][0] == 1)
-        power = response[0][3][0]
-        power = 0 if power == -2147483648 else power
-        power_b = response[1][3][0]
-        power_b = 0 if power_b == -2147483648 else power_b
-        voltage = response[2][3][0]
-        voltage = 0 if voltage == -2147483648 else voltage / 100.0
-        voltage_b = response[3][3][0]
-        voltage_b = 0 if voltage_b == -2147483648 else voltage_b / 100.0
-        current = response[4][3][0]
-        current = 0 if current == -2147483648 else current / 1000.0
-        current_b = response[5][3][0]
-        current_b = 0 if current_b == -2147483648 else current_b / 1000.0
-        logging.debug("Got DC A: %f V, %f A, %d W (calc %f W)",
-                      voltage, current, power, voltage * current)
-        logging.debug("Got DC B: %f V, %f A, %d W (calc %f W)",
-                      voltage_b, current_b, power_b, voltage_b * current_b)
-        return [(voltage, current, power), (voltage_b, current_b, power_b)]
+
+        power = [None, None]
+        voltage = [None, None]
+        current = [None, None]
+
+        for r in response:
+            assert(r.cls == 1 or r.cls == 2)
+            if r.code == Inverter.CODE_DC_POWER:
+                power[r.cls - 1] = r.data[0]
+            elif r.code == Inverter.CODE_DC_INPUT_VOLTAGE:
+                voltage[r.cls - 1] = self._to_voltage(r.data[0])
+            elif r.code == Inverter.CODE_DC_INPUT_CURRENT:
+                current[r.cls - 1] = self._to_current(r.data[0])
+
+        for i in range(2):
+            if power[i] is None:
+                logging.debug("DC input %d: no data", i)
+            else:
+                logging.debug(
+                    "DC input %d: %.2f V, %.3f A, %d W (calc %.3f W)",
+                    i, voltage[i], current[i], power[i],
+                    voltage[i] * current[i])
+
+        return (power, voltage, current)
+
+    def get_ac_data(self):
+        packet = DeviceDataPacket(
+            source=self.local_address,
+            destination=self.address,
+            command=DeviceDataPacket.CMD_READ_REQUEST,
+            obj=0x5100)
+        packet.add_param(0x464000)
+        packet.add_param(0x4655ff)
+
+        self.socket.send(packet.get_data())
+        response = DeviceDataPacket(self.socket.recv()).decode_read_response()
+
+        power = 3 * [None]
+        voltage = 3 * [None]
+        current = 3 * [None]
+
+        for r in response:
+            if (r.code == Inverter.CODE_AC_POWER_L1
+                  or r.code == Inverter.CODE_AC_POWER_L2
+                  or r.code == Inverter.CODE_AC_POWER_L3):
+                power[r.code - Inverter.CODE_AC_POWER_L1] = r.data[0]
+            elif (r.code == Inverter.CODE_AC_VOLTAGE_L1
+                  or r.code == Inverter.CODE_AC_VOLTAGE_L2
+                  or r.code == Inverter.CODE_AC_VOLTAGE_L3):
+                voltage[r.code - Inverter.CODE_AC_VOLTAGE_L1] = \
+                    self._to_voltage(r.data[0])
+            elif (r.code == Inverter.CODE_AC_CURRENT_L1
+                  or r.code == Inverter.CODE_AC_CURRENT_L2
+                  or r.code == Inverter.CODE_AC_CURRENT_L3):
+                current[r.code - Inverter.CODE_AC_CURRENT_L1] = \
+                    self._to_current(r.data[0])
+
+        logging.debug("AC: power %s W, voltage %s V, current %s A",
+                      power, voltage, current)
+        return (power, voltage, current)
 
     def get_ac_total_power(self):
         packet = DeviceDataPacket(
@@ -452,31 +530,13 @@ class Inverter:
         self.socket.send(packet.get_data())
         response = DeviceDataPacket(self.socket.recv()).decode_read_response()
         assert(len(response) == 1)
-        power = response[0][3][0]
-        power = 0 if power == -2147483648 else power
-        logging.debug("Got spot power %d W", power)
+
+        power = response[0].data[0]
+        if power is not None:
+            logging.debug("AC total power: %d W", power)
+        else:
+            logging.debug("Inverter not active")
         return power
-
-    def get_ac_voltage(self):
-        packet = DeviceDataPacket(
-            source=self.local_address,
-            destination=self.address,
-            command=DeviceDataPacket.CMD_READ_REQUEST,
-            obj=0x5100)
-        packet.add_param(0x00464800)
-        packet.add_param(0x004655FF)
-
-        self.socket.send(packet.get_data())
-        response = DeviceDataPacket(self.socket.recv()).decode_read_response()
-        assert(len(response) == 6)
-        voltage = 0
-        for phase in response[0:3]:
-            v = phase[3][0]
-            v = 0 if v == 4294967295 else v / 100.0
-            voltage += v
-        voltage = math.sqrt(3) * voltage / 3
-        logging.debug("Got voltage %f", voltage)
-        return voltage
 
     def get(self):
         logging.debug("Get device name, type etc.")
@@ -486,9 +546,11 @@ class Inverter:
             command=DeviceDataPacket.CMD_READ_REQUEST,
             obj=0x5800)
         packet.add_param(0x821E00)
-        packet.add_param(0x8220FF)
+        packet.add_param(0x855e00)
 
         self.socket.send(packet.get_data())
+        response = DeviceDataPacket(self.socket.recv())
+        response.decode_read_response()
         response = DeviceDataPacket(self.socket.recv())
         response.decode_read_response()
 
@@ -524,9 +586,9 @@ class Inverter:
             source=self.local_address,
             destination=self.address,
             command=DeviceDataPacket.CMD_READ_REQUEST,
-            obj=0x5400)
-        packet.add_param(0x00000000)
-        packet.add_param(0x00ffffff)
+            obj=0x5100)
+        packet.add_param(0x00464800)
+        packet.add_param(0x004655FF)
 
         self.socket.send(packet.get_data())
         response = DeviceDataPacket(self.socket.recv())
@@ -600,15 +662,15 @@ if __name__ == '__main__':
     inverter.local_address = Address(1, 654321)
     inverter.login_user("0000")
     inverter.get_day_yield()
-    inverter.get_dc_voltage()
+    inverter.get_dc_data()
+    inverter.get_ac_data()
     inverter.get_ac_total_power()
-    now = datetime.now()
-    inverter.get_day_data(now - timedelta(hours=5), now)
-    inverter.get_month_data(now - timedelta(days=5), now)
-    inverter.get()
+    #now = datetime.now()
+    #inverter.get_day_data(now - timedelta(hours=5), now)
+    #inverter.get_month_data(now - timedelta(days=5), now)
+    #inverter.get()
     #inverter.get2()
     #inverter.get3()
     #inverter.get4()
-    inverter.get_ac_voltage()
     inverter.logout()
     #inverter.get()

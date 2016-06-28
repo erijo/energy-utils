@@ -25,6 +25,7 @@ from datetime import date, datetime, time, timedelta
 import argparse
 import configparser
 import logging
+import math
 
 
 def get_current_temperature(protocol=None, model=None, id=None):
@@ -85,9 +86,13 @@ def main():
     inverter.login_user("0000")
 
     energy = inverter.get_day_yield()
-    strings = inverter.get_dc_voltage()
     power = inverter.get_ac_total_power()
-    voltage = inverter.get_ac_voltage()
+    (dc_power, dc_voltage, dc_current) = inverter.get_dc_data()
+    (_, ac_voltage, _) = inverter.get_ac_data()
+
+    if energy is None or power is None:
+        logging.debug("Invert not active")
+        return
 
     pvoutput = PvOutput(config['pvoutput']['apikey'],
                         config['pvoutput']['systemid'],
@@ -97,14 +102,14 @@ def main():
         datetime=datetime.now(),
         energy_generation=energy,
         power_generation=power,
-        voltage=voltage,
+        voltage=math.sqrt(3) * sum(ac_voltage) / 3,
         temperature=temp,
-        extended_1=strings[0][1],
-        extended_2=strings[1][1],
-        extended_3=strings[0][0],
-        extended_4=strings[1][0],
-        extended_5=strings[0][2],
-        extended_6=strings[1][2])
+        extended_1=dc_current[0],
+        extended_2=dc_current[1],
+        extended_3=dc_voltage[0],
+        extended_4=dc_voltage[1],
+        extended_5=dc_power[0],
+        extended_6=dc_power[1])
     try:
         pvoutput.add_status(status)
     except:
