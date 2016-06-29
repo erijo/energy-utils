@@ -441,10 +441,7 @@ class Inverter:
         assert(response[0].code == Inverter.CODE_DAY_YIELD)
 
         energy = response[0].data
-        if energy is not None:
-            logging.debug("Day yield: %d Wh", energy)
-        else:
-            logging.debug("Inverter not started")
+        logging.debug("Day yield: %d Wh (%.3f kWh)", energy, energy / 1000.0)
         return energy
 
     def get_total_yield(self):
@@ -462,9 +459,8 @@ class Inverter:
         assert(response[0].code == Inverter.CODE_TOTAL_YIELD)
 
         energy = response[0].data
-        if energy is not None:
-            logging.debug("Total yield: %d Wh (%.3f MWh)",
-                          energy, energy / 1000.0 / 1000.0)
+        logging.debug("Total yield: %d Wh (%.3f MWh)",
+                      energy, energy / 1000.0 / 1000.0)
         return energy
 
     def get_dc_data(self):
@@ -520,18 +516,18 @@ class Inverter:
         current = 3 * [None]
 
         for r in response:
-            if (r.code == Inverter.CODE_AC_POWER_L1
-                  or r.code == Inverter.CODE_AC_POWER_L2
-                  or r.code == Inverter.CODE_AC_POWER_L3):
+            if r.code in [Inverter.CODE_AC_POWER_L1,
+                          Inverter.CODE_AC_POWER_L2,
+                          Inverter.CODE_AC_POWER_L3]:
                 power[r.code - Inverter.CODE_AC_POWER_L1] = r.data[0]
-            elif (r.code == Inverter.CODE_AC_VOLTAGE_L1
-                  or r.code == Inverter.CODE_AC_VOLTAGE_L2
-                  or r.code == Inverter.CODE_AC_VOLTAGE_L3):
+            elif r.code in [Inverter.CODE_AC_VOLTAGE_L1,
+                            Inverter.CODE_AC_VOLTAGE_L2,
+                            Inverter.CODE_AC_VOLTAGE_L3]:
                 voltage[r.code - Inverter.CODE_AC_VOLTAGE_L1] = \
                     self._to_voltage(r.data[0])
-            elif (r.code == Inverter.CODE_AC_CURRENT_L1
-                  or r.code == Inverter.CODE_AC_CURRENT_L2
-                  or r.code == Inverter.CODE_AC_CURRENT_L3):
+            elif r.code in [Inverter.CODE_AC_CURRENT_L1,
+                            Inverter.CODE_AC_CURRENT_L2,
+                            Inverter.CODE_AC_CURRENT_L3]:
                 current[r.code - Inverter.CODE_AC_CURRENT_L1] = \
                     self._to_current(r.data[0])
 
@@ -595,7 +591,8 @@ class Inverter:
                     "<LQ", response.data, offset)
                 offset += 12
                 timestamp = datetime.fromtimestamp(timestamp)
-                logging.debug("Yield @ %s: %d Wh", timestamp, energy)
+                logging.debug("Yield @ %s: %d Wh (%.3f MWh)",
+                              timestamp, energy, energy / 1000.0 / 1000.0)
             assert(offset == len(response.data))
             if response.packet_count == 0:
                 break
@@ -620,7 +617,8 @@ class Inverter:
                     "<LQ", response.data, offset)
                 offset += 12
                 timestamp = datetime.fromtimestamp(timestamp)
-                logging.debug("Yield @ %s: %d Wh", timestamp, energy)
+                logging.debug("Yield @ %s: %d Wh (%.3f MWh)",
+                              timestamp, energy, energy / 1000.0 / 1000.0)
             assert(offset == len(response.data))
             if response.packet_count == 0:
                 break

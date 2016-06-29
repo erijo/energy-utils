@@ -85,14 +85,19 @@ def main():
     inverter = detect_inverters(sock=None, timeout=2)[0]
     inverter.login_user("0000")
 
-    energy = inverter.get_day_yield()
     power = inverter.get_ac_total_power()
+    if power is None:
+        logging.debug("Invert not active")
+        return
+
+    energy = inverter.get_day_yield()
     (dc_power, dc_voltage, dc_current) = inverter.get_dc_data()
     (_, ac_voltage, _) = inverter.get_ac_data()
 
-    if energy is None or power is None:
-        logging.debug("Invert not active")
-        return
+    if None not in ac_voltage:
+        ac_voltage = math.sqrt(3) * sum(ac_voltage) / 3
+    else:
+        ac_voltage = None
 
     pvoutput = PvOutput(config['pvoutput']['apikey'],
                         config['pvoutput']['systemid'],
@@ -102,7 +107,7 @@ def main():
         datetime=datetime.now(),
         energy_generation=energy,
         power_generation=power,
-        voltage=math.sqrt(3) * sum(ac_voltage) / 3,
+        voltage=ac_voltage,
         temperature=temp,
         extended_1=dc_current[0],
         extended_2=dc_current[1],
