@@ -28,9 +28,13 @@ import urllib.parse
 
 
 Output = namedtuple('Output', ['date',
-                               'generated', 'exported',
+                               'generated', 'efficiency', 'exported',
                                'import_peak', 'consumption'])
-DefaultOutput = Output(None, None, None, None, None)
+DefaultOutput = Output(None, None, None, None, None, None)
+
+Extended = namedtuple('Extended', ['date',
+                                   'extended_1', 'extended_2', 'extended_3',
+                                   'extended_4', 'extended_5', 'extended_6'])
 
 Status = namedtuple('Status', ['datetime',
                                'energy_generation', 'power_generation',
@@ -233,9 +237,39 @@ class PvOutput:
             outputs.append(DefaultOutput._replace(
                 date=datetime.strptime(fields[0], "%Y%m%d").date(),
                 generated=result(fields, 1, int),
+                efficiency=result(fields, 2, float),
                 exported=result(fields, 3, int),
                 import_peak=result(fields, 10, int)))
         return outputs
+
+    def get_extended(self, date_from=None, date_to=None, limit=None):
+        params = {'df': date_from.strftime("%Y%m%d") \
+                  if date_from is not None else '',
+                  'dt': date_to.strftime("%Y%m%d") \
+                  if date_to is not None else '',
+                  'limit': limit if limit is not None else ''}
+
+        (status, _, body) = self.send_request("/service/r2/getextended.jsp",
+                                              params, ignore_dry_run=True)
+        if status != http.OK:
+            raise Exception("Failed to get extended")
+
+        extended = []
+        if not body:
+            return extended
+
+        for entry in body.split(";"):
+            fields = entry.split(",")
+            extended.append(Extended(
+                date=datetime.strptime(fields[0], "%Y%m%d").date(),
+                extended_1=result(fields, 1, float),
+                extended_2=result(fields, 2, float),
+                extended_3=result(fields, 3, float),
+                extended_4=result(fields, 4, float),
+                extended_5=result(fields, 5, float),
+                extended_6=result(fields, 6, float)))
+
+        return extended
 
 
 if __name__ == '__main__':
