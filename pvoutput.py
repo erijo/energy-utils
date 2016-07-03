@@ -27,9 +27,10 @@ import time
 import urllib.parse
 
 
-Output = namedtuple('Output', ['datetime',
-                               'generated', 'exported', 'consumption'])
-DefaultOutput = Output(None, None, None, None)
+Output = namedtuple('Output', ['date',
+                               'generated', 'exported',
+                               'import_peak', 'consumption'])
+DefaultOutput = Output(None, None, None, None, None)
 
 Status = namedtuple('Status', ['datetime',
                                'energy_generation', 'power_generation',
@@ -107,9 +108,10 @@ class PvOutput:
         return (status, reason, body)
 
     def add_output(self, output):
-        params = {'d': output.datetime.strftime("%Y%m%d"),
+        params = {'d': output.date.strftime("%Y%m%d"),
                   'g': value(output, 'generated', int),
                   'e': value(output, 'exported', int),
+                  'ip': value(output, 'import_peak', int),
                   'c': value(output, 'consumption', int)}
 
         (status, _, _) = self.send_request("/service/r2/addoutput.jsp", params)
@@ -209,6 +211,31 @@ class PvOutput:
                     extended_5=result(fields, 15 if history else 13, float),
                     extended_6=result(fields, 16 if history else 14, float))
         return statuses
+
+    def get_output(self, date_from=None, date_to=None, limit=None):
+        params = {'df': date_from.strftime("%Y%m%d") \
+                  if date_from is not None else '',
+                  'dt': date_to.strftime("%Y%m%d") \
+                  if date_to is not None else '',
+                  'limit': limit if limit is not None else ''}
+
+        (status, _, body) = self.send_request("/service/r2/getoutput.jsp",
+                                              params, ignore_dry_run=True)
+        if status != http.OK:
+            raise Exception("Failed to get output")
+
+        outputs = []
+        if not body:
+            return outputs
+
+        for entry in body.split(";"):
+            fields = entry.split(",")
+            outputs.append(DefaultOutput._replace(
+                date=datetime.strptime(fields[0], "%Y%m%d").date(),
+                generated=result(fields, 1, int),
+                exported=result(fields, 3, int),
+                import_peak=result(fields, 10, int)))
+        return outputs
 
 
 if __name__ == '__main__':
