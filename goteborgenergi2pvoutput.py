@@ -87,6 +87,8 @@ def main():
         if output.import_peak is None:
             missing.append(output.date)
 
+    logging.debug("Missing export/import for: %s",
+                  [d.strftime("%Y-%m-%d") for d in missing])
     if not missing:
         return
 
@@ -104,6 +106,7 @@ def main():
             month = date.month
         if imp[date.day - 1] is None or exp[date.day - 1] is None:
             continue
+        logging.debug("Found export/import for %s", date.strftime("%Y-%m-%d"))
         output = DefaultOutput._replace(
             date=date,
             exported=exp[date.day - 1] * 1000,
