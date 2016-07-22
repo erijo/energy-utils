@@ -29,8 +29,10 @@ import urllib.parse
 
 Output = namedtuple('Output', ['date',
                                'generated', 'efficiency', 'exported',
-                               'import_peak', 'consumption'])
-DefaultOutput = Output(None, None, None, None, None, None)
+                               'import_peak', 'import_off_peak',
+                               'import_shoulder', 'import_high_shoulder',
+                               'consumption'])
+DefaultOutput = Output(None, None, None, None, None, None, None, None, None)
 
 Extended = namedtuple('Extended', ['date',
                                    'extended_1', 'extended_2', 'extended_3',
@@ -116,6 +118,9 @@ class PvOutput:
                   'g': value(output, 'generated', int),
                   'e': value(output, 'exported', int),
                   'ip': value(output, 'import_peak', int),
+                  'io': value(output, 'import_off_peak', int),
+                  'is': value(output, 'import_shoulder', int),
+                  'ih': value(output, 'import_high_shoulder', int),
                   'c': value(output, 'consumption', int)}
 
         (status, _, _) = self.send_request("/service/r2/addoutput.jsp", params)
@@ -239,7 +244,10 @@ class PvOutput:
                 generated=result(fields, 1, int),
                 efficiency=result(fields, 2, float),
                 exported=result(fields, 3, int),
-                import_peak=result(fields, 10, int)))
+                import_peak=result(fields, 10, int),
+                import_off_peak=result(fields, 11, int),
+                import_shoulder=result(fields, 12, int),
+                import_high_shoulder=result(fields, 13, int)))
         return outputs
 
     def get_extended(self, date_from=None, date_to=None, limit=None):
