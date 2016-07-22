@@ -27,6 +27,10 @@ import configparser
 import datetime
 import logging
 
+SHOULDER_HOURS_1 = slice(6, 8)
+PEAK_HOURS = slice(8, 17)
+HIGH_SHOULDER_HOURS = slice(17, 20)
+SHOULDER_HOURS_2 = slice(20, 23)
 
 def main():
     logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s')
@@ -104,13 +108,24 @@ def main():
             imp = ge.get_month_energy(config['goteborgenergi']['import'], date)
             exp = ge.get_month_energy(config['goteborgenergi']['export'], date)
             month = date.month
-        if imp[date.day - 1] is None or exp[date.day - 1] is None:
+        energy_imp = imp.get_day_energy(date)
+        energy_exp = exp.get_day_energy(date)
+        if energy_imp[0] is None or energy_exp[0] is None:
             continue
         logging.debug("Found export/import for %s", date.strftime("%Y-%m-%d"))
+        imp_peak = sum(energy_imp[1][PEAK_HOURS])
+        imp_shoulder = sum(energy_imp[1][SHOULDER_HOURS_1]) \
+                       + sum(energy_imp[1][SHOULDER_HOURS_2])
+        imp_high_shoulder = sum(energy_imp[1][HIGH_SHOULDER_HOURS])
+        imp_off_peak = energy_imp[0] \
+                       - sum([imp_peak, imp_shoulder, imp_high_shoulder])
         output = DefaultOutput._replace(
             date=date,
-            exported=exp[date.day - 1] * 1000,
-            import_peak=imp[date.day - 1] * 1000)
+            exported=energy_exp[0],
+            import_peak=imp_peak,
+            import_off_peak=imp_off_peak,
+            import_shoulder=imp_shoulder,
+            import_high_shoulder=imp_high_shoulder)
         pvoutput.add_output(output)
 
     ge.log_out()

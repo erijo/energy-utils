@@ -27,6 +27,32 @@ import re
 import urllib.parse
 
 
+class MonthEnergy:
+    def __init__(self, data):
+        self.data = data
+
+    def get_day_energy(self, date):
+        total = None
+        hours = 24 * [None]
+
+        for entry in self.data['series'][0]['data']:
+            if entry and date.day == int(entry['name']):
+                total = int(entry['y'] * 1000)
+                break
+
+        if total is None:
+            return (total, hours)
+
+        for entry in self.data['drilldown']['series']:
+            if entry and date.day == int(entry['name']):
+                for h in entry['data']:
+                    hour = int(h['name'])
+                    assert(hour >= 0 and hour <= 23)
+                    assert(h['y'] >= 0)
+                    hours[hour] = int(h['y'] * 1000)
+        return (total, hours)
+
+
 class GoteborgEnergi:
     SERVER = 'elavtal.goteborgenergi.se'
     LOGIN_PATH = '/din-sida-info/logga-in/'
@@ -147,17 +173,7 @@ class GoteborgEnergi:
         data = json.loads(response.read().decode('utf-8'))
         conn.close()
 
-        data = data['series'][0]['data']
-        energy = len(data) * [None]
-        for day in data:
-            if day is None:
-                continue
-            index = int(day['name']) - 1
-            assert(index >= 0)
-            assert(index < len(energy))
-            energy[index] = day['y']
-
-        return energy
+        return MonthEnergy(data)
 
 
 if __name__ == '__main__':
@@ -167,5 +183,5 @@ if __name__ == '__main__':
     ge = GoteborgEnergi(sys.argv[1], sys.argv[2])
     ge.log_in()
     energy = ge.get_month_energy(sys.argv[3], date.today())
-    print(energy)
+    print(energy.get_month_energy(date.today()))
     ge.log_out()
