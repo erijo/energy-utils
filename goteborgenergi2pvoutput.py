@@ -88,7 +88,9 @@ def main():
     for output in pvoutput.get_output(limit=35):
         if output.date == datetime.date.today():
             continue
-        if output.import_peak is None:
+        if (output.import_peak is None
+            or (output.import_peak + output.import_off_peak
+                + output.import_shoulder + output.import_high_shoulder) == 0):
             missing.append(output.date)
 
     logging.debug("Missing export/import for: %s",
