@@ -114,7 +114,8 @@ def main():
         energy_exp = exp.get_day_energy(date)
         if energy_imp[0] is None or energy_exp[0] is None:
             continue
-        logging.debug("Found export/import for %s", date.strftime("%Y-%m-%d"))
+        logging.debug("Found export %d Wh and import %d Wh for %s",
+                      energy_exp[0], energy_imp[0], date.strftime("%Y-%m-%d"))
         imp_peak = sum(energy_imp[1][PEAK_HOURS])
         imp_shoulder = sum(energy_imp[1][SHOULDER_HOURS_1]) \
                        + sum(energy_imp[1][SHOULDER_HOURS_2])
