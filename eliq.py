@@ -38,7 +38,7 @@ def parse_datetime(date):
 
 
 class EliqOnline:
-    def __init__(self, access_token, server='my.eliq.se',
+    def __init__(self, access_token, server='my.eliq.io',
                  port=http.HTTPS_PORT):
         self.access_token = access_token
         self.server = server
