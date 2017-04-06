@@ -183,5 +183,5 @@ if __name__ == '__main__':
     ge = GoteborgEnergi(sys.argv[1], sys.argv[2])
     ge.log_in()
     energy = ge.get_month_energy(sys.argv[3], date.today())
-    print(energy.get_month_energy(date.today()))
+    print(energy.get_day_energy(date.today()))
     ge.log_out()
