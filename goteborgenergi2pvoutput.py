@@ -129,6 +129,12 @@ def main():
             import_off_peak=imp_off_peak,
             import_shoulder=imp_shoulder,
             import_high_shoulder=imp_high_shoulder)
+        # Must explicity set consumption if nothing was generated as pvoutput
+        # doesn't calculate it in that case.
+        if output.exported == 0:
+            outputs = pvoutput.get_output(date_from=date, date_to=date)
+            if outputs and outputs[0].generated == 0:
+                output = output._replace(consumption=energy_imp[0])
         pvoutput.add_output(output)
 
     ge.log_out()
