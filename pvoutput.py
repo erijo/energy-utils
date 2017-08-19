@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 
 # Copyright (c) 2016 Erik Johansson <erik@ejohansson.se>
@@ -48,8 +47,8 @@ DefaultStatus = Status(None, None, None, None, None, None, None, None, None,
                        None, None, None, None)
 
 
-def value(status, field, converter):
-    v = getattr(status, field)
+def value(obj, field, converter):
+    v = getattr(obj, field)
     if v is None:
         return ''
     return str(converter(v))
@@ -222,10 +221,8 @@ class PvOutput:
         return statuses
 
     def get_output(self, date_from=None, date_to=None, limit=None):
-        params = {'df': date_from.strftime("%Y%m%d") \
-                  if date_from is not None else '',
-                  'dt': date_to.strftime("%Y%m%d") \
-                  if date_to is not None else '',
+        params = {'df': date_from.strftime("%Y%m%d") if date_from else '',
+                  'dt': date_to.strftime("%Y%m%d") if date_to else '',
                   'limit': limit if limit is not None else ''}
 
         (status, _, body) = self.send_request("/service/r2/getoutput.jsp",
@@ -251,10 +248,8 @@ class PvOutput:
         return outputs
 
     def get_extended(self, date_from=None, date_to=None, limit=None):
-        params = {'df': date_from.strftime("%Y%m%d") \
-                  if date_from is not None else '',
-                  'dt': date_to.strftime("%Y%m%d") \
-                  if date_to is not None else '',
+        params = {'df': date_from.strftime("%Y%m%d") if date_from else '',
+                  'dt': date_to.strftime("%Y%m%d") if date_to else '',
                   'limit': limit if limit is not None else ''}
 
         (status, _, body) = self.send_request("/service/r2/getextended.jsp",
