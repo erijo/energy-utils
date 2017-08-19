@@ -40,11 +40,11 @@ Extended = namedtuple('Extended', ['date',
 Status = namedtuple('Status', ['datetime',
                                'energy_generation', 'power_generation',
                                'energy_consumption', 'power_consumption',
-                               'temperature', 'voltage',
+                               'efficiency', 'temperature', 'voltage',
                                'extended_1', 'extended_2', 'extended_3',
                                'extended_4', 'extended_5', 'extended_6'])
 DefaultStatus = Status(None, None, None, None, None, None, None, None, None,
-                       None, None, None, None)
+                       None, None, None, None, None)
 
 
 def value(obj, field, converter):
@@ -181,12 +181,15 @@ class PvOutput:
                 logging.error("Failed to add status batch: %s", body)
                 raise Exception("could not add status batch")
 
-    def get_status(self, date=None, history=False, asc=False, limit=None,
-                   extended=False):
-        params = {'d': date.strftime("%Y%m%d") if date is not None else '',
+    def get_status(self, date=None, time=None, history=False, asc=False,
+                   limit=None, time_from=None, time_to=None, extended=False):
+        params = {'d': date.strftime("%Y%m%d") if date else '',
+                  't': time.strftime("%H:%M") if time else '',
                   'h': 1 if history else 0,
                   'asc': 1 if asc else 0,
                   'limit': limit if limit is not None else 24 * 12,
+                  'from': time_from.strftime("%H:%M") if time_from else '',
+                  'to': time_to.strftime("%H:%M") if time_to else '',
                   'ext': 1 if extended else 0}
 
         (status, _, body) = self.send_request("/service/r2/getstatus.jsp",
@@ -208,6 +211,7 @@ class PvOutput:
                 power_generation=result(fields, 4 if history else 3, int),
                 energy_consumption=result(fields, 7 if history else 4, int),
                 power_consumption=result(fields, 8 if history else 5, int),
+                efficiency=result(fields, 3 if history else 6, float),
                 temperature=result(fields, 9 if history else 7, float),
                 voltage=result(fields, 10 if history else 8, float)))
             if extended:
