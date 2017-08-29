@@ -17,37 +17,60 @@
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
 # USA
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import html.parser
-import http.client as http
-import http.cookies as cookies
-import logging
 import re
+import requests
 import urllib.parse
 
 
+class Error(Exception):
+    pass
+
+
+class LogInError(Error):
+    def __init__(self, status, message):
+        self.status = status
+        self.message = message
+
+
+class ParseError(Error):
+    def __init__(self, message):
+        self.message = message
+
+
 class EonMonthEnergyHtmlParser(html.parser.HTMLParser):
-    def __init__(self):
-        super().__init__(self)
+    def __init__(self, date):
+        super().__init__()
+        self.days_in_month = (
+            (date + timedelta(days=32 - date.day)).replace(day=1)
+            - timedelta(days=1)
+        ).day
+
+    def parse(self, data):
         self.values = []
         self.day = None
         self.in_td = False
         self.done = False
 
-    def parse(self, data):
         self.feed(data)
         self.close()
-        assert(len(self.values) >= 28)
+
+        if len(self.values) != self.days_in_month:
+            raise ParseError("Expected %d values, got %d" % (
+                self.days_in_month, len(self.values)))
         for day in self.values:
-            assert(len(day) == 24)
+            if len(day) != 24:
+                raise ParseError("Expected 24 hour values, got %d" % len(day))
+
         return self.values
 
     def handle_starttag(self, tag, attrs):
         if self.done:
             return
         if tag == 'td':
-            assert(not self.in_td)
+            assert not self.in_td
             self.in_td = True
 
     def handle_endtag(self, tag):
@@ -67,19 +90,21 @@ class EonMonthEnergyHtmlParser(html.parser.HTMLParser):
             if match is not None:
                 self.day = int(match.group(0).lstrip("0"))
                 self.values.append(())
-                assert(len(self.values) == self.day)
+                assert len(self.values) == self.day
         elif len(self.values[self.day - 1]) < 24:
-            if re.match(r'-|[0-9]+', data):
+            data = data.strip()
+            if re.match(r'-|[0-9.]+', data):
                 # Convert kWh -> Wh if there is a value
-                value = None if data == '-' else int(data) * 1000
+                value = None if data == '-' else int(float(data) * 1000)
                 self.values[self.day - 1] += (value,)
 
 
 class Eon:
     MY_PAGES_SERVER = 'minasidor.eon.se'
-    MY_PAGES_LOGIN_PATH = '/privatkund/Mina-sidor/Inloggning/'
-    SAP_SERVER = 'sapuces.eon.se'
-    SAP_MONTH_ENERGY_PATH = '/eon-online/eon.consumption.month.sap'
+
+    LOGIN_PATH = '/eon-online/loginservlet'
+    LOGOUT_PATH = '/eon-online/logoutservlet'
+    MONTH_ENERGY_PATH = '/eon-online/eon.consumption.month.sap'
 
     def __init__(self, user_id, password, user_id_type=1):
         """Class to access my pages on eon.se
@@ -91,100 +116,65 @@ class Eon:
         self.user_id = user_id
         self.password = password
         self.user_id_type = user_id_type
-        self.viewstate = None
 
-    def _get_viewstate(self):
-        if self.viewstate:
-            return self.viewstate
-        conn = http.HTTPConnection(Eon.MY_PAGES_SERVER)
-        conn.request("GET", Eon.MY_PAGES_LOGIN_PATH)
+        self._session = None
 
-        response = conn.getresponse()
-        logging.debug("GET viewstate returned %u (%s)",
-                      response.status, response.reason)
-        if response.status != http.OK:
-            raise Exception("Failed to get viewstate")
-
-        body = response.read().decode('utf-8')
-        conn.close()
-
-        match = re.search(r'id="__VIEWSTATE" value="([^"]+)"', body)
-        assert(match is not None)
-        self.viewstate = match.group(1)
-        return self.viewstate
+    def _build_url(self, path):
+        return 'https://%s%s' % (Eon.MY_PAGES_SERVER, path)
 
     def log_in(self):
-        params = {'__VIEWSTATE': self._get_viewstate()}
-        params['m$blocks1C2R1$Login$UserIdTypeField'] = self.user_id_type
-        params['m$blocks1C2R1$Login$UserIdField'] = self.user_id
-        params['m$blocks1C2R1$Login$PasswordField'] = self.password
-        params['m$blocks1C2R1$Login$LoginButton'] = 'Logga in'
+        self._session = requests.Session()
 
-        headers = {
-            "Content-type": "application/x-www-form-urlencoded",
-            "Accept": "text/plain"
-        }
-        conn = http.HTTPSConnection(Eon.MY_PAGES_SERVER)
-        encoded = urllib.parse.urlencode(params)
-        conn.request("POST", Eon.MY_PAGES_LOGIN_PATH, encoded, headers)
+        headers = {'Content-Type': 'application/json; charset=utf-8'}
+        data = {'userIdType': self.user_id_type,
+                'userId': self.user_id,
+                'password': self.password,
+                'cookies': 1}
 
-        response = conn.getresponse()
-        logging.debug("Log in returned %u (%s)",
-                      response.status, response.reason)
-        if response.status != http.FOUND:
-            raise Exception("Failed to log in")
+        req = self._session.post(self._build_url(Eon.LOGIN_PATH),
+                                 data=urllib.parse.urlencode(data))
+        req.raise_for_status()
+        response = req.json()
 
-        self.cookies = cookies.SimpleCookie(response.getheader('Set-Cookie'))
-        conn.close()
+        status = int(response['Status'])
+        if status == 1:
+            return response['Customer']
+
+        raise LogInError(status,
+                         {2: 'Account locked',
+                          3: 'Account not activated',
+                          4: 'Account no longer active',
+                          5: 'Wrong username and/or password',
+                          6: 'Initial password must be changed',
+                          7: 'No account for customer'
+                         }.get(status, 'Unknown status code'))
 
     def log_out(self):
-        params = {'__VIEWSTATE': self._get_viewstate()}
-        params['__EVENTTARGET'] = 'm$ctl01$logoutConfirmButton'
-        params['__EVENTARGUMENT'] = ''
+        assert self._session
 
-        headers = {
-            "Content-type": "application/x-www-form-urlencoded",
-            "Accept": "text/plain"
-        }
-        conn = http.HTTPSConnection(Eon.MY_PAGES_SERVER)
-        encoded = urllib.parse.urlencode(params)
-        conn.request("POST", Eon.MY_PAGES_LOGIN_PATH, encoded, headers)
+        req = self._session.post(self._build_url(Eon.LOGOUT_PATH),
+                                 allow_redirects=False)
+        req.raise_for_status()
 
-        response = conn.getresponse()
-        logging.debug("Log out returned %u (%s)",
-                      response.status, response.reason)
-        if response.status != http.FOUND:
-            raise Exception("Failed to log out")
-
-        self.cookies = None
-        conn.close()
+        self._session = None
 
     def _get_month_energy(self, installation_id, date, role, type):
-        params = {'radioChosen': 'KWH', 'role': role, 'type': type}
-        params['installationSelector'] = installation_id
-        params['year'] = date.strftime("%Y")
-        params['month'] = date.strftime("%m")
+        assert self._session
 
-        cookie = self.cookies.output(attrs={}, header='', sep=';')
-        headers = {
-            'Cookie': cookie.lstrip(),
-            "Content-type": "application/x-www-form-urlencoded",
-            "Accept": "text/plain"
-        }
-        conn = http.HTTPSConnection(Eon.SAP_SERVER)
-        encoded = urllib.parse.urlencode(params)
-        conn.request("POST", Eon.SAP_MONTH_ENERGY_PATH, encoded, headers)
+        data = {'radioChosen': 'KWH',
+                'role': role,
+                'type': type,
+                'installationSelector': installation_id,
+                'year': date.strftime("%Y"),
+                'month': date.strftime("%m")}
 
-        response = conn.getresponse()
-        logging.debug("GET month energy for %s returned %u (%s)",
-                      installation_id, response.status, response.reason)
-        if response.status != http.OK:
-            raise Exception("Failed to get month energy")
+        req = self._session.post(
+            self._build_url(Eon.MONTH_ENERGY_PATH),
+            data=data)
+        req.raise_for_status()
 
-        body = response.read().decode('iso8859-15')
-        conn.close()
-        parser = EonMonthEnergyHtmlParser()
-        return parser.parse(body)
+        parser = EonMonthEnergyHtmlParser(date)
+        return parser.parse(req.text)
 
     def get_month_import(self, installation_id, date):
         """Get energy imported during the month given by date.
@@ -202,3 +192,22 @@ class Eon:
         See get_month_import for description on how to get installation id.
         """
         return self._get_month_energy(installation_id, date, '03', 'G')
+
+
+if __name__ == '__main__':
+    from datetime import date
+    import sys
+
+    eon = Eon(sys.argv[1], sys.argv[2])
+
+    c = eon.log_in()
+    for a in c['Accounts']:
+        print("%s account: %s|%s|%s|%s|A" % (
+            {'01': 'import', '03': 'export'}.get(a['Kofizsd'], "unknown"),
+            a['vkont'], '?', a['Premise'], a['Anlage']))
+    if len(sys.argv) > 3:
+        print(eon.get_month_import(sys.argv[3], date.today()))
+    if len(sys.argv) > 4:
+        print(eon.get_month_export(sys.argv[4], date.today()))
+
+    eon.log_out()
