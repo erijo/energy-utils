@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (c) 2016 Erik Johansson <erik@ejohansson.se>
+# Copyright (c) 2016-2017 Erik Johansson <erik@ejohansson.se>
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License as
@@ -18,15 +18,55 @@
 # USA
 
 from eon import Eon
-from pvoutput import PvOutput, DefaultOutput, DefaultStatus
+from pvoutput import PvOutput, DefaultOutput
 
-from datetime import datetime, timedelta, time
+from datetime import date, timedelta
 from getpass import getpass
-from itertools import accumulate
 
 import argparse
 import configparser
 import logging
+
+SHOULDER_HOURS_1 = slice(6, 8)
+PEAK_HOURS = slice(8, 17)
+HIGH_SHOULDER_HOURS = slice(17, 20)
+SHOULDER_HOURS_2 = slice(20, 23)
+
+
+def get_outputs_missing_import_export(pvoutput):
+    yesterday = date.today() - timedelta(days=1)
+
+    missing = []
+
+    for output in pvoutput.get_output(date_to=yesterday, limit=35):
+        if (output.import_peak is None
+            or output.exported is None
+            or (output.import_peak + output.import_off_peak
+                + output.import_shoulder + output.import_high_shoulder) == 0):
+            missing.append(output)
+
+    missing.reverse()
+    return missing
+
+
+def _get_import_export(func, installation_id, day, cache):
+    key = day.replace(day=1)
+    if key not in cache:
+        cache[key] = func(installation_id, day)
+    data = cache[key][day.day - 1]
+    if None in data:
+        return None
+    return data
+
+
+def get_import(eon, installation_id, day, cache={}):
+    return _get_import_export(
+        eon.get_month_import, installation_id, day, cache)
+
+
+def get_export(eon, installation_id, day, cache={}):
+    return _get_import_export(
+        eon.get_month_export, installation_id, day, cache)
 
 
 def main():
@@ -74,74 +114,47 @@ def main():
         with open(args.config, 'w') as configfile:
             config.write(configfile)
 
-    eon = Eon(config['eon']['email'], config['eon']['password'])
-    eon.log_in()
-
-    yesterday = (datetime.now() - timedelta(days=1)).date()
-    imp = eon.get_month_import(config['eon']['import'], yesterday)
-    exp = eon.get_month_export(config['eon']['export'], yesterday)
-
-    imp_day = [v for v in imp[yesterday.day - 1] if v is not None]
-    exp_day = [v for v in exp[yesterday.day - 1] if v is not None]
-
-    logging.debug("%s: %u h (%.2f kWh) import, %u h (%.2f kWh) export",
-                  yesterday, len(imp_day), sum(imp_day) / 1000.0,
-                  len(exp_day), sum(exp_day) / 1000.0)
-    logging.debug("Import: %s", imp_day)
-    logging.debug("Export: %s", exp_day)
-
-    eon.log_out()
-
     pvoutput = PvOutput(config['pvoutput']['apikey'],
                         config['pvoutput']['systemid'],
                         args.dry_run)
 
-    statuses = pvoutput.get_status(date=yesterday, history=True, asc=True)
+    missing = get_outputs_missing_import_export(pvoutput)
+    logging.debug("Missing export/import for: %s",
+                  [o.date.strftime("%Y-%m-%d") for o in missing])
+    if not missing:
+        return
 
-    to_send = []
-    imp_day_sum = [0] + list(accumulate(imp_day))
-    exp_day_sum = [0] + list(accumulate(exp_day))
-    for status in statuses:
-        hour = status.datetime.hour
-        if hour >= min(len(imp_day), len(exp_day)):
-            break
+    eon = Eon(config['eon']['email'], config['eon']['password'])
+    eon.log_in()
 
-        minute = status.datetime.minute
-        if hour == 23 and minute == 55:
-            minute = 60
-        assert(minute <= 60)
-
-        energy = imp_day_sum[hour] + imp_day[hour] * minute // 60
-        energy += status.energy_generation
-        energy -= exp_day_sum[hour] + exp_day[hour] * minute // 60
-        energy = max(0, energy)
-
-        power = imp_day[hour]
-        power += status.power_generation
-        power -= exp_day[hour]
-        power = max(0, power)
-
-        if (energy == status.energy_consumption
-            and power == status.power_consumption):
+    for output in missing:
+        imp = get_import(eon, config['eon']['import'], output.date)
+        exp = get_export(eon, config['eon']['export'], output.date)
+        if imp is None or exp is None:
             continue
-        to_send.append(DefaultStatus._replace(
-            datetime=status.datetime,
-            energy_consumption=energy,
-            power_consumption=power))
 
-    if to_send:
-        pvoutput.add_batch_status(to_send)
+        imp_sum = sum(imp)
+        exp_sum = sum(exp)
 
-    if to_send and len(imp_day) == 24 and len(exp_day) == 24:
-        consumption = imp_day_sum[24]
-        consumption += statuses[-1].energy_generation
-        consumption -= exp_day_sum[24]
+        logging.debug("Found export %d Wh and import %d Wh for %s",
+                      exp_sum, imp_sum, output.date.strftime("%Y-%m-%d"))
 
+        imp_peak = sum(imp[PEAK_HOURS])
+        imp_shoulder = sum(imp[SHOULDER_HOURS_1]) + sum(imp[SHOULDER_HOURS_2])
+        imp_high_shoulder = sum(imp[HIGH_SHOULDER_HOURS])
+        imp_off_peak = imp_sum - sum(
+            [imp_peak, imp_shoulder, imp_high_shoulder])
         output = DefaultOutput._replace(
-            datetime=yesterday,
-            exported=exp_day_sum[24],
-            consumption=consumption)
+            date=output.date,
+            exported=exp_sum,
+            import_peak=imp_peak,
+            import_off_peak=imp_off_peak,
+            import_shoulder=imp_shoulder,
+            import_high_shoulder=imp_high_shoulder,
+            consumption=imp_sum + (output.generated - exp_sum))
         pvoutput.add_output(output)
+
+    eon.log_out()
 
 
 if __name__ == '__main__':
