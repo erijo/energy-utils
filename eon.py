@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (c) 2016 Erik Johansson <erik@ejohansson.se>
+# Copyright (c) 2016-2017 Erik Johansson <erik@ejohansson.se>
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License as
@@ -132,6 +132,7 @@ class Eon:
                 'cookies': 1}
 
         req = self._session.post(self._build_url(Eon.LOGIN_PATH),
+                                 headers=headers,
                                  data=urllib.parse.urlencode(data))
         req.raise_for_status()
         response = req.json()
@@ -146,8 +147,8 @@ class Eon:
                           4: 'Account no longer active',
                           5: 'Wrong username and/or password',
                           6: 'Initial password must be changed',
-                          7: 'No account for customer'
-                         }.get(status, 'Unknown status code'))
+                          7: 'No account for customer'}.get(
+                              status, 'Unknown status code'))
 
     def log_out(self):
         assert self._session
