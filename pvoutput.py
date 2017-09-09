@@ -122,8 +122,10 @@ class PvOutput:
                   'ih': value(output, 'import_high_shoulder', int),
                   'c': value(output, 'consumption', int)}
 
-        (status, _, _) = self.send_request("/service/r2/addoutput.jsp", params)
+        (status, _, body) = self.send_request(
+            "/service/r2/addoutput.jsp", params)
         if status != http.OK:
+            logging.error("Add output failed: %s", body)
             raise Exception("Failed to add output")
 
     def add_status(self, status, net=None):
@@ -144,8 +146,10 @@ class PvOutput:
         if net is not None:
             params['n'] = int(net)
 
-        (status, _, _) = self.send_request("/service/r2/addstatus.jsp", params)
+        (status, _, body) = self.send_request(
+            "/service/r2/addstatus.jsp", params)
         if status != http.OK:
+            logging.error("Add status failed: %s", body)
             raise Exception("Failed to add status")
 
     def add_batch_status(self, statuses):
@@ -178,8 +182,8 @@ class PvOutput:
             elif (status == http.BAD_REQUEST and 'Load in progress' in body):
                 time.sleep(20)
             else:
-                logging.error("Failed to add status batch: %s", body)
-                raise Exception("could not add status batch")
+                logging.error("Add batch status failed: %s", body)
+                raise Exception("Failed to add batch status")
 
     def get_status(self, date=None, time=None, history=False, asc=False,
                    limit=None, time_from=None, time_to=None, extended=False):
@@ -195,6 +199,7 @@ class PvOutput:
         (status, _, body) = self.send_request("/service/r2/getstatus.jsp",
                                               params, ignore_dry_run=True)
         if status != http.OK:
+            logging.error("Get status failed: %s", body)
             raise Exception("Failed to get status")
 
         statuses = []
@@ -232,6 +237,7 @@ class PvOutput:
         (status, _, body) = self.send_request("/service/r2/getoutput.jsp",
                                               params, ignore_dry_run=True)
         if status != http.OK:
+            logging.error("Get output failed: %s", body)
             raise Exception("Failed to get output")
 
         outputs = []
@@ -259,6 +265,7 @@ class PvOutput:
         (status, _, body) = self.send_request("/service/r2/getextended.jsp",
                                               params, ignore_dry_run=True)
         if status != http.OK:
+            logging.error("Get extended failed: %s", body)
             raise Exception("Failed to get extended")
 
         extended = []
