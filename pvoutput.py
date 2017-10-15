@@ -20,8 +20,8 @@
 from collections import namedtuple
 from datetime import datetime
 
-import http.client as http
 import logging
+import requests
 import time
 import urllib.parse
 
@@ -53,6 +53,7 @@ def value(obj, field, converter):
         return ''
     return str(converter(v))
 
+
 def result(entry, index, converter):
     v = entry[index]
     if v == 'NaN':
@@ -77,38 +78,36 @@ class PvOutput:
 
         if self.dry_run and not ignore_dry_run:
             logging.debug("POST to %s: %s (dry-run)", url, params)
-            return (http.OK, "OK", "")
+            return (requests.codes.ok, "OK", "")
 
         time_since_last_request = time.time() - self.last_request_time
         if time_since_last_request < 10:
             time.sleep(10 - time_since_last_request)
 
-        conn = http.HTTPConnection('pvoutput.org')
-        encoded = urllib.parse.urlencode(params)
-
         logging.debug("POST to %s: %s", url, params)
         headers = self.headers
         if self.donation_mode is None:
             headers = headers.copy()
-            headers["X-Rate-Limit"] = 1
-        conn.request("POST", url, encoded, headers)
+            headers["X-Rate-Limit"] = '1'
 
-        response = conn.getresponse()
-        status = response.status
-        reason = response.reason
-        body = response.read().decode('utf-8')
+        req = requests.post('https://pvoutput.org%s' % url,
+                            headers=headers,
+                            data=params)
+
+        status = req.status_code
+        reason = req.reason
+        body = req.text
         logging.debug(
             "HTTP response: %d (%s): %s", status, reason,
             body if len(body) < 120 else body[0:100] + " ... " + body[-20:])
 
         if self.donation_mode is None:
-            mode = response.getheader("X-Rate-Limit-Limit")
+            mode = req.headers["X-Rate-Limit-Limit"]
             self.donation_mode = mode == "300"
             logging.debug("Donation mode: %s (limit %s/%s)",
                           self.donation_mode,
-                          response.getheader("X-Rate-Limit-Remaining"), mode)
+                          req.headers["X-Rate-Limit-Remaining"], mode)
 
-        conn.close()
         self.last_request_time = time.time()
         return (status, reason, body)
 
@@ -124,7 +123,7 @@ class PvOutput:
 
         (status, _, body) = self.send_request(
             "/service/r2/addoutput.jsp", params)
-        if status != http.OK:
+        if status != requests.codes.ok:
             logging.error("Add output failed: %s", body)
             raise Exception("Failed to add output")
 
@@ -148,7 +147,7 @@ class PvOutput:
 
         (status, _, body) = self.send_request(
             "/service/r2/addstatus.jsp", params)
-        if status != http.OK:
+        if status != requests.codes.ok:
             logging.error("Add status failed: %s", body)
             raise Exception("Failed to add status")
 
@@ -177,9 +176,10 @@ class PvOutput:
             (status, reason, body) = self.send_request(
                 "/service/r2/addbatchstatus.jsp",
                 {"data": ";".join(entries)})
-            if status == http.OK:
+            if status == requests.codes.ok:
                 offset += len(entries)
-            elif (status == http.BAD_REQUEST and 'Load in progress' in body):
+            elif (status == requests.codes.bad_request
+                  and 'Load in progress' in body):
                 time.sleep(20)
             else:
                 logging.error("Add batch status failed: %s", body)
@@ -198,7 +198,7 @@ class PvOutput:
 
         (status, _, body) = self.send_request("/service/r2/getstatus.jsp",
                                               params, ignore_dry_run=True)
-        if status != http.OK:
+        if status != requests.codes.ok:
             logging.error("Get status failed: %s", body)
             raise Exception("Failed to get status")
 
@@ -236,7 +236,7 @@ class PvOutput:
 
         (status, _, body) = self.send_request("/service/r2/getoutput.jsp",
                                               params, ignore_dry_run=True)
-        if status != http.OK:
+        if status != requests.codes.ok:
             logging.error("Get output failed: %s", body)
             raise Exception("Failed to get output")
 
@@ -264,7 +264,7 @@ class PvOutput:
 
         (status, _, body) = self.send_request("/service/r2/getextended.jsp",
                                               params, ignore_dry_run=True)
-        if status != http.OK:
+        if status != requests.codes.ok:
             logging.error("Get extended failed: %s", body)
             raise Exception("Failed to get extended")
 
