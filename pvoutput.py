@@ -285,6 +285,22 @@ class PvOutput:
 
         return extended
 
+    def get_missing(self, date_from, date_to):
+        params = {'df': date_from.strftime("%Y%m%d"),
+                  'dt': date_to.strftime("%Y%m%d")}
+
+        (status, _, body) = self.send_request("/service/r2/getmissing.jsp",
+                                              params, ignore_dry_run=True)
+        if status != requests.codes.ok:
+            logging.error("Get missing failed: %s", body)
+            raise Exception("Failed to get missing")
+
+        missing = []
+        if body:
+            for entry in body.split(","):
+                missing.append(datetime.strptime(entry, "%Y%m%d").date())
+        return missing
+
 
 if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s',
