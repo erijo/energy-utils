@@ -66,12 +66,13 @@ class PvOutput:
         self.donation_mode = donation_mode
         self.dry_run = dry_run
         self.last_request_time = 0
-        self.headers = {
+        self.session = requests.Session()
+        self.session.headers.update({
             "X-Pvoutput-Apikey": apikey,
             "X-Pvoutput-SystemId": systemid,
             "Content-type": "application/x-www-form-urlencoded",
             "Accept": "text/plain"
-        }
+        })
 
     def send_request(self, url, params, ignore_dry_run=False):
         params = {k: v for k, v in params.items() if v is not ''}
@@ -85,14 +86,13 @@ class PvOutput:
             time.sleep(10 - time_since_last_request)
 
         logging.debug("POST to %s: %s", url, params)
-        headers = self.headers
+        headers = None
         if self.donation_mode is None:
-            headers = headers.copy()
-            headers["X-Rate-Limit"] = '1'
+            headers = {"X-Rate-Limit": '1'}
 
-        req = requests.post('https://pvoutput.org%s' % url,
-                            headers=headers,
-                            data=params)
+        req = self.session.post('https://pvoutput.org%s' % url,
+                                headers=headers,
+                                data=params)
 
         status = req.status_code
         reason = req.reason
