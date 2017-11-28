@@ -41,7 +41,7 @@ def initialize_database(path):
     return conn
 
 
-def save_day_data(conn, eliq):
+def save_day_data(conn, eliq, channel_id):
     cur = conn.cursor()
     result = cur.execute(
         '''SELECT date as "date [date]" FROM eliq_day_data
@@ -58,7 +58,7 @@ def save_day_data(conn, eliq):
 
     entries = []
     while start < end:
-        data = eliq.get_day_data(start, end)
+        data = eliq.get_day_data(start, end, channel_id)
         for entry in data.data:
             assert((entry.time_end - entry.time_start).days == 1)
             entries.append((entry.time_start.date(),
@@ -71,7 +71,7 @@ def save_day_data(conn, eliq):
         conn.commit()
 
 
-def save_6min_data(conn, eliq):
+def save_6min_data(conn, eliq, channel_id):
     cur = conn.cursor()
     result = cur.execute(
         '''SELECT timestamp as "timestamp [timestamp]"
@@ -97,7 +97,8 @@ def save_6min_data(conn, eliq):
 
     while start < end:
         entries = []
-        data = eliq.get_6min_data(start, (start + timedelta(days=1)).date())
+        data = eliq.get_6min_data(
+            start, (start + timedelta(days=1)).date(), channel_id)
         for entry in data.data:
             assert(entry.time_start.date() == entry.time_end.date()
                    or entry.time_end.time() == time(0, 0, 0))
@@ -134,6 +135,9 @@ def main():
     if not config['eliq'].get('accesstoken'):
         config['eliq']['accesstoken'] = input("ELIQ Online access token: ")
         modified = True
+    if not config['eliq'].get('channelid'):
+        config['eliq']['channelid'] = input("ELIQ Online channel ID: ")
+        modified = True
 
     if not config['pvoutput'].get('apikey'):
         config['pvoutput']['apikey'] = input("PVOutput API key: ")
@@ -150,8 +154,8 @@ def main():
     eliq = EliqOnline(config['eliq']['accesstoken'])
 
     # Update eliq data
-    save_day_data(conn, eliq)
-    save_6min_data(conn, eliq)
+    save_day_data(conn, eliq, config['eliq']['channelid'])
+    save_6min_data(conn, eliq, config['eliq']['channelid'])
 
     pvoutput = PvOutput(config['pvoutput']['apikey'],
                         config['pvoutput']['systemid'],
