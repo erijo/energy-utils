@@ -45,8 +45,8 @@ def hexdump(data, length=16):
         logging.debug("  %02x: %-*s %s" % (offset, 3 * length, hex, text))
 
 
-class MulticastSocket:
-    def __init__(self, address, port, timeout=5):
+class UnicastSocket:
+    def __init__(self, address, port=PORT, timeout=5):
         self.address = address
         self.port = port
 
@@ -60,10 +60,6 @@ class MulticastSocket:
         self.socket.settimeout(timeout)
 
         self.socket.bind(('', port))
-        self.socket.setsockopt(socket.SOL_IP, socket.IP_MULTICAST_LOOP, 0)
-        self.socket.setsockopt(
-            socket.SOL_IP, socket.IP_ADD_MEMBERSHIP,
-            socket.inet_aton(address) + socket.inet_aton('0.0.0.0'))
 
     def fileno(self):
         return self.socket.fileno()
@@ -80,6 +76,15 @@ class MulticastSocket:
                       len(data), peer[0], peer[1])
         hexdump(data)
         return data
+
+
+class MulticastSocket(UnicastSocket):
+    def __init__(self, address=ADDRESS, port=PORT, timeout=5):
+        super().__init__(address, port, timeout)
+        self.socket.setsockopt(socket.SOL_IP, socket.IP_MULTICAST_LOOP, 0)
+        self.socket.setsockopt(
+            socket.SOL_IP, socket.IP_ADD_MEMBERSHIP,
+            socket.inet_aton(address) + socket.inet_aton('0.0.0.0'))
 
 
 DataUnit = namedtuple('DataUnit', ['tag', 'version', 'data'])
@@ -334,7 +339,7 @@ class DeviceDataPacket:
 
 
 def detect_inverters(sock, timeout=5):
-    sock = MulticastSocket(ADDRESS, PORT) if sock is None else sock
+    sock = MulticastSocket(timeout=timeout) if sock is None else sock
     device = DeviceDataPacket(source=Address(189, 123456),
                               command=DeviceDataPacket.CMD_READ_REQUEST)
     device.add_param(0)
@@ -641,17 +646,18 @@ class Inverter:
 if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s',
                         level=logging.DEBUG)
-    #sock = MulticastSocket(ADDRESS, PORT)
-    inverter = detect_inverters(sock=None, timeout=1)[0]
-    inverter.local_address = Address(1, 654321)
-    inverter.login_user("0000")
-    inverter.get_day_yield()
-    inverter.get_total_yield()
-    inverter.get_dc_data()
-    inverter.get_ac_data()
-    inverter.get_ac_total_power()
-    #now = datetime.now()
-    #inverter.get_day_data(now - timedelta(hours=5), now)
-    #inverter.get_month_data(now - timedelta(days=5), now)
-    inverter.get()
-    inverter.logout()
+    import sys
+    sock = UnicastSocket(sys.argv[1]) if len(sys.argv) > 1 else None
+    for inverter in detect_inverters(sock=sock, timeout=2):
+        inverter.local_address = Address(1, 654321)
+        inverter.login_user("0000")
+        inverter.get_day_yield()
+        inverter.get_total_yield()
+        inverter.get_dc_data()
+        inverter.get_ac_data()
+        inverter.get_ac_total_power()
+        #now = datetime.now()
+        #inverter.get_day_data(now - timedelta(hours=5), now)
+        #inverter.get_month_data(now - timedelta(days=5), now)
+        inverter.get()
+        inverter.logout()
