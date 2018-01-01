@@ -17,7 +17,7 @@
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
 # USA
 
-from sma import detect_inverters
+from sma import detect_inverters, UnicastSocket
 from pvoutput import PvOutput, DefaultStatus
 
 from datetime import date, datetime, time, timedelta
@@ -59,6 +59,9 @@ def main():
                         action="store_true")
     parser.add_argument('-n', '--dry-run', help="Don't send any data",
                         action="store_true")
+    parser.add_argument('-i', '--inverter', help="IP-address of inverter if "
+                        "automatic detection fails or can't be used "
+                        "(e.g. if you have multiple inverters or use Windows)")
     parser.add_argument('-t', '--timeout', type=int, default=2,
                         help="Timeout to use for network operations")
     args = parser.parse_args()
@@ -84,7 +87,11 @@ def main():
 
     temp = get_current_temperature(protocol="oregon")
 
-    inverter = detect_inverters(sock=None, timeout=args.timeout)
+    sock = None
+    if args.inverter:
+        sock = UnicastSocket(args.inverter, timeout=args.timeout)
+
+    inverter = detect_inverters(sock=sock, timeout=args.timeout)
     if not inverter:
         logging.error("No inverter found")
         return
