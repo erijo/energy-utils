@@ -82,7 +82,12 @@ def main():
 
     temp = get_current_temperature(protocol="oregon")
 
-    inverter = detect_inverters(sock=None, timeout=2)[0]
+    inverter = detect_inverters(sock=None, timeout=2)
+    if not inverter:
+        logging.error("No inverter found")
+        return
+    logging.debug("Found %d inverter(s)", len(inverter))
+    inverter = inverter[0]
     inverter.login_user("0000")
 
     power = inverter.get_ac_total_power()
