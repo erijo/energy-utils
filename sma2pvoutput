@@ -59,6 +59,8 @@ def main():
                         action="store_true")
     parser.add_argument('-n', '--dry-run', help="Don't send any data",
                         action="store_true")
+    parser.add_argument('-t', '--timeout', type=int, default=2,
+                        help="Timeout to use for network operations")
     args = parser.parse_args()
 
     if args.debug:
@@ -82,7 +84,7 @@ def main():
 
     temp = get_current_temperature(protocol="oregon")
 
-    inverter = detect_inverters(sock=None, timeout=2)
+    inverter = detect_inverters(sock=None, timeout=args.timeout)
     if not inverter:
         logging.error("No inverter found")
         return
@@ -92,7 +94,7 @@ def main():
 
     power = inverter.get_ac_total_power()
     if power is None:
-        logging.debug("Invert not active")
+        logging.debug("Inverter not active")
         return
 
     energy = inverter.get_day_yield()
