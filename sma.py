@@ -329,7 +329,7 @@ class DeviceDataPacket:
         return response
 
 
-def detect_inverters(sock, timeout=5):
+def detect_inverters(sock, timeout=5, retry=3):
     sock = MulticastSocket(timeout=timeout) if sock is None else sock
     device = DeviceDataPacket(source=Address(189, 123456),
                               command=DeviceDataPacket.CMD_READ_REQUEST)
@@ -347,6 +347,8 @@ def detect_inverters(sock, timeout=5):
         wait = end - time.time()
         if wait < 0:
             break
+        if retry:
+            wait = 0.1
         read, _, _ = select.select([sock], [], [], wait)
         if sock in read:
             data, peer = sock.recv(return_peer=True)
@@ -355,6 +357,10 @@ def detect_inverters(sock, timeout=5):
                           response.source.susy_id, response.source.serial)
             inverters.append(Inverter(UnicastSocket(peer[0], peer[1], timeout),
                                       response.source))
+            retry = 0
+        if retry:
+            sock.send(device.get_data())
+            retry -= 1
     return inverters
 
 
