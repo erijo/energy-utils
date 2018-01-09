@@ -52,14 +52,7 @@ class UnicastSocket:
 
         self.socket = socket.socket(
             socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-        try:
-            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-        except AttributeError:
-            pass
         self.socket.settimeout(timeout)
-
-        self.socket.bind(('', port))
 
     def fileno(self):
         return self.socket.fileno()
@@ -81,10 +74,6 @@ class UnicastSocket:
 class MulticastSocket(UnicastSocket):
     def __init__(self, address=ADDRESS, port=PORT, timeout=5):
         super().__init__(address, port, timeout)
-        self.socket.setsockopt(socket.SOL_IP, socket.IP_MULTICAST_LOOP, 0)
-        self.socket.setsockopt(
-            socket.SOL_IP, socket.IP_ADD_MEMBERSHIP,
-            socket.inet_aton(address) + socket.inet_aton('0.0.0.0'))
 
 
 DataUnit = namedtuple('DataUnit', ['tag', 'version', 'data'])
