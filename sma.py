@@ -63,11 +63,13 @@ class UnicastSocket:
         hexdump(data)
         self.socket.sendto(data, (self.address, self.port))
 
-    def recv(self, bufsize=1500):
+    def recv(self, bufsize=1500, return_peer=False):
         data, peer = self.socket.recvfrom(bufsize)
         logging.debug("Received %d bytes from %s:%s",
                       len(data), peer[0], peer[1])
         hexdump(data)
+        if return_peer:
+            return data, peer
         return data
 
 
@@ -347,19 +349,12 @@ def detect_inverters(sock, timeout=5):
             break
         read, _, _ = select.select([sock], [], [], wait)
         if sock in read:
-            response = DeviceDataPacket(sock.recv())
+            data, peer = sock.recv(return_peer=True)
+            response = DeviceDataPacket(data)
             logging.debug("Found inverter type %d with serial %u",
                           response.source.susy_id, response.source.serial)
-            inverters.append(Inverter(sock, response.source))
-        continue
-        if sock in read:
-            response = DataPacket(receive_message(sock))
-            for unit in response.units:
-                if unit.tag == 3:
-                    address = socket.inet_ntoa(unit.data)
-                    logging.debug("Found inverter on %s", address)
-                    inverters.append(Inverter(address))
-                    break
+            inverters.append(Inverter(UnicastSocket(peer[0], peer[1], timeout),
+                                      response.source))
     return inverters
 
 
