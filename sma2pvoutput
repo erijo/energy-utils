@@ -86,6 +86,8 @@ def main():
             config.write(configfile)
 
     temp = get_current_temperature(id=175)
+    if temp is not None:
+        logging.debug("Temperature %.1f C", temp)
 
     sock = None
     if args.inverter:
