@@ -85,7 +85,7 @@ def main():
         with open(args.config, 'w') as configfile:
             config.write(configfile)
 
-    temp = get_current_temperature(protocol="oregon")
+    temp = get_current_temperature(id=175)
 
     sock = None
     if args.inverter:
