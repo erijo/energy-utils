@@ -29,7 +29,7 @@ import struct
 import time
 
 
-ADDRESS = '239.12.255.255'
+ADDRESS = "239.12.255.255"
 PORT = 9522
 
 
@@ -39,9 +39,9 @@ class MalformedPacketError(Exception):
 
 def hexdump(data, length=16):
     for offset in range(0, len(data), length):
-        segment = data[offset:offset + length]
-        hex = ' '.join(["%02x" % b for b in segment])
-        text = ''.join([(chr(x).isalnum() and chr(x)) or '.' for x in segment])
+        segment = data[offset : offset + length]
+        hex = " ".join(["%02x" % b for b in segment])
+        text = "".join([(chr(x).isalnum() and chr(x)) or "." for x in segment])
         logging.debug("  %02x: %-*s %s" % (offset, 3 * length, hex, text))
 
 
@@ -51,22 +51,21 @@ class UnicastSocket:
         self.port = port
 
         self.socket = socket.socket(
-            socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+            socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP
+        )
         self.socket.settimeout(timeout)
 
     def fileno(self):
         return self.socket.fileno()
 
     def send(self, data):
-        logging.debug("Sending %d bytes to %s:%s",
-                      len(data), self.address, self.port)
+        logging.debug("Sending %d bytes to %s:%s", len(data), self.address, self.port)
         hexdump(data)
         self.socket.sendto(data, (self.address, self.port))
 
     def recv(self, bufsize=1500, return_peer=False):
         data, peer = self.socket.recvfrom(bufsize)
-        logging.debug("Received %d bytes from %s:%s",
-                      len(data), peer[0], peer[1])
+        logging.debug("Received %d bytes from %s:%s", len(data), peer[0], peer[1])
         hexdump(data)
         if return_peer:
             return data, peer
@@ -78,7 +77,7 @@ class MulticastSocket(UnicastSocket):
         super().__init__(address, port, timeout)
 
 
-DataUnit = namedtuple('DataUnit', ['tag', 'version', 'data'])
+DataUnit = namedtuple("DataUnit", ["tag", "version", "data"])
 
 
 class DataPacket:
@@ -90,7 +89,8 @@ class DataPacket:
     other units (e.g. SMA net 2). At the end there's the "end" unit.
 
     """
-    HEADER = b'SMA\0'
+
+    HEADER = b"SMA\0"
     TAG_0 = 42
     TAG_NET_2 = 1
     TAG_DISCOVER = 2
@@ -102,7 +102,7 @@ class DataPacket:
         if data is None:
             self.pack_unit(DataPacket.TAG_0, ">L", DataPacket.DEFAULT_GROUP)
         else:
-            if data[0:len(DataPacket.HEADER)] != DataPacket.HEADER:
+            if data[0 : len(DataPacket.HEADER)] != DataPacket.HEADER:
                 raise MalformedPacketError("SMA header incorrect")
 
             # Unpack units
@@ -111,16 +111,18 @@ class DataPacket:
             while offset + header_size <= len(data):
                 (length, tag) = struct.unpack_from(">HH", data, offset)
                 offset += header_size
-                version = tag & 0xf
-                self.add_unit(tag >> 4, data[offset:offset + length], version)
+                version = tag & 0xF
+                self.add_unit(tag >> 4, data[offset : offset + length], version)
                 offset += length
             if offset != len(data):
                 raise MalformedPacketError("data unit length missmatch")
 
             # Check for end unit and drop it
-            if (not self.units
+            if (
+                not self.units
                 or self.units[-1].tag != DataPacket.TAG_END
-                or self.units[-1].data is not None):
+                or self.units[-1].data is not None
+            ):
                 raise MalformedPacketError("missing or malformed end tag")
             self.units.pop()
 
@@ -134,7 +136,7 @@ class DataPacket:
         data = DataPacket.HEADER
         for unit in units:
             length = len(unit.data) if unit.data else 0
-            tag = unit.tag << 4 | (unit.version & 0xf)
+            tag = unit.tag << 4 | (unit.version & 0xF)
             data += struct.pack(">HH", length, tag)
             if unit.data:
                 data += unit.data
@@ -159,10 +161,10 @@ class Net2DataPacket(DataPacket):
         super().__init__(data=data)
 
         self.protocol = protocol
-        self.net_data = b''
+        self.net_data = b""
 
         if data is not None:
-            assert(protocol is None)
+            assert protocol is None
             # Extract the net 2 unit data
             units = self.units
             self.units = []
@@ -184,8 +186,8 @@ class Net2DataPacket(DataPacket):
 
 
 # SUSy ID = SMA update system ID
-Address = namedtuple('Address', ['susy_id', 'serial'])
-WildcardAddress = Address(0xffff, 0xffffffff)
+Address = namedtuple("Address", ["susy_id", "serial"])
+WildcardAddress = Address(0xFFFF, 0xFFFFFFFF)
 
 
 class DeviceDataPacket:
@@ -197,12 +199,14 @@ class DeviceDataPacket:
     CMD_JOB_LOGOFF = 14
 
     ReadResponseObject = namedtuple(
-        'ReadResponseObject', ['cls', 'code', 'timestamp', 'data'])
+        "ReadResponseObject", ["cls", "code", "timestamp", "data"]
+    )
 
     PacketId = 1
+
     def __init__(self, data=None, **kwargs):
         self.params = []
-        self.data = b''
+        self.data = b""
 
         if data is not None:
             self.packet = Net2DataPacket(data=data)
@@ -218,7 +222,7 @@ class DeviceDataPacket:
 
             self.control = v[1]
             self.destination = Address(v[2], v[3])
-            self.job_num = v[5] & 0xf
+            self.job_num = v[5] & 0xF
             self.source = Address(v[6], v[7])
             self.status = v[10]
             self.packet_count = v[11]
@@ -228,45 +232,62 @@ class DeviceDataPacket:
             if offset + v[14] * 4 > len(self.packet.net_data):
                 raise MalformedPacketError("Bad device data packet params")
             for param in range(v[14]):
-                self.params.append(struct.unpack_from(
-                    "<L", self.packet.net_data, offset)[0])
+                self.params.append(
+                    struct.unpack_from("<L", self.packet.net_data, offset)[0]
+                )
                 offset += 4
             self.data = self.packet.net_data[offset:]
             logging.debug(
                 "Got obj=%u command=%u job_num=%u params=%s left=%d data=%d",
-                self.obj, self.command, self.job_num, self.params,
-                self.packet_count, len(self.data))
+                self.obj,
+                self.command,
+                self.job_num,
+                self.params,
+                self.packet_count,
+                len(self.data),
+            )
             if self.status != 0:
                 logging.debug("Status not OK")
         else:
             self.packet = Net2DataPacket(protocol=DeviceDataPacket.PROTOCOL)
             self.control = 0x80 | 0x20
-            self.destination = kwargs.get('destination', WildcardAddress)
-            self.job_num = kwargs.get('job_num', 0)
-            self.source = kwargs.get('source', Address(0, 0))
+            self.destination = kwargs.get("destination", WildcardAddress)
+            self.job_num = kwargs.get("job_num", 0)
+            self.source = kwargs.get("source", Address(0, 0))
             self.status = 0
             self.packet_count = 0
-            self.packet_id = kwargs.get('packet_id')
+            self.packet_id = kwargs.get("packet_id")
             if self.packet_id is None:
                 self.packet_id = DeviceDataPacket.PacketId
                 DeviceDataPacket.PacketId += 1
-            self.command = kwargs.get('command', 0)
-            self.obj = kwargs.get('obj', 0)
+            self.command = kwargs.get("command", 0)
+            self.obj = kwargs.get("obj", 0)
 
     def add_param(self, param):
         self.params.append(param)
 
     def get_data(self):
-        assert(len(self.data) % 4 == 0)
+        assert len(self.data) % 4 == 0
         length = 7 + len(self.params) + int(len(self.data) / 4)
-        data = struct.pack("<BBHLBBHLBBHHHBBH",
-                           length, self.control,
-                           self.destination.susy_id, self.destination.serial,
-                           0, self.job_num & 0xf,
-                           self.source.susy_id, self.source.serial,
-                           0, self.job_num & 0xf,
-                           self.status, self.packet_count, self.packet_id | 0x8000,
-                           self.command, len(self.params), self.obj)
+        data = struct.pack(
+            "<BBHLBBHLBBHHHBBH",
+            length,
+            self.control,
+            self.destination.susy_id,
+            self.destination.serial,
+            0,
+            self.job_num & 0xF,
+            self.source.susy_id,
+            self.source.serial,
+            0,
+            self.job_num & 0xF,
+            self.status,
+            self.packet_count,
+            self.packet_id | 0x8000,
+            self.command,
+            len(self.params),
+            self.obj,
+        )
         for param in self.params:
             data += struct.pack("<l", param)
         data += self.data
@@ -278,19 +299,31 @@ class DeviceDataPacket:
         response = []
         while offset + 8 <= len(self.data):
             (cls, code, data_type, timestamp) = struct.unpack_from(
-                "<BHBL", self.data, offset)
+                "<BHBL", self.data, offset
+            )
             offset += 8
-            response.append(DeviceDataPacket.ReadResponseObject(
-                cls=cls, code=code,
-                timestamp=datetime.fromtimestamp(timestamp), data=None))
-            logging.debug("Got class=0x%x code=0x%x type=0x%x time=%s",
-                          cls, code, data_type, response[-1].timestamp)
+            response.append(
+                DeviceDataPacket.ReadResponseObject(
+                    cls=cls,
+                    code=code,
+                    timestamp=datetime.fromtimestamp(timestamp),
+                    data=None,
+                )
+            )
+            logging.debug(
+                "Got class=0x%x code=0x%x type=0x%x time=%s",
+                cls,
+                code,
+                data_type,
+                response[-1].timestamp,
+            )
             if data_type == 0x10:
                 # Text: 32 bytes of NULL terminated string
                 (text,) = struct.unpack_from("<32s", self.data, offset)
                 offset += len(text)
                 response[-1] = response[-1]._replace(
-                    data=text.rstrip(b'\0').decode('utf-8'))
+                    data=text.rstrip(b"\0").decode("utf-8")
+                )
                 logging.debug(" -> text '%s'", response[-1].data)
             elif data_type == 0x8:
                 # Status: eight 32-bit words
@@ -298,9 +331,9 @@ class DeviceDataPacket:
                 offset += 4 * len(attributes)
                 response[-1] = response[-1]._replace(data=[])
                 for attribute in attributes:
-                    tag = attribute & 0xffffff
+                    tag = attribute & 0xFFFFFF
                     is_set = attribute >> 24
-                    if tag == 0xfffffe: # End tag
+                    if tag == 0xFFFFFE:  # End tag
                         break
                     if is_set:
                         response[-1].data.append(tag)
@@ -309,7 +342,7 @@ class DeviceDataPacket:
                 # 64-bit integer
                 (value,) = struct.unpack_from("<Q", self.data, offset)
                 offset += 8
-                if value != 0xffffffffffffffff:
+                if value != 0xFFFFFFFFFFFFFFFF:
                     response[-1] = response[-1]._replace(data=value)
                 logging.debug(" -> value 0x%08x (%d)", value, value)
             elif data_type == 0x0 or data_type == 0x40:
@@ -320,26 +353,28 @@ class DeviceDataPacket:
                 response[-1] = response[-1]._replace(data=[])
                 for value in values:
                     logging.debug(" -> value 0x%08x (%d)", abs(value), value)
-                    if ((data_type == 0x0 and value != 0xffffffff)
-                        or (data_type == 0x40 and value != -0x80000000)):
+                    if (data_type == 0x0 and value != 0xFFFFFFFF) or (
+                        data_type == 0x40 and value != -0x80000000
+                    ):
                         response[-1].data.append(value)
                     else:
                         response[-1].data.append(None)
-        assert(offset == len(self.data))
+        assert offset == len(self.data)
         return response
 
 
 def detect_inverters(sock, timeout=5, retry=3):
     sock = MulticastSocket(timeout=timeout) if sock is None else sock
-    device = DeviceDataPacket(source=Address(189, 123456),
-                              command=DeviceDataPacket.CMD_READ_REQUEST)
+    device = DeviceDataPacket(
+        source=Address(189, 123456), command=DeviceDataPacket.CMD_READ_REQUEST
+    )
     device.add_param(0)
     device.add_param(0)
     sock.send(device.get_data())
 
-    #message = DataPacket()
-    #message.add_unit(DataPacket.TAG_DISCOVER, None)
-    #send_message(sock, message.get_data(), ADDRESS, PORT)
+    # message = DataPacket()
+    # message.add_unit(DataPacket.TAG_DISCOVER, None)
+    # send_message(sock, message.get_data(), ADDRESS, PORT)
 
     end = time.time() + timeout
     inverters = []
@@ -353,10 +388,14 @@ def detect_inverters(sock, timeout=5, retry=3):
         if sock in read:
             data, peer = sock.recv(return_peer=True)
             response = DeviceDataPacket(data)
-            logging.debug("Found inverter type %d with serial %u",
-                          response.source.susy_id, response.source.serial)
-            inverters.append(Inverter(UnicastSocket(peer[0], peer[1], timeout),
-                                      response.source))
+            logging.debug(
+                "Found inverter type %d with serial %u",
+                response.source.susy_id,
+                response.source.serial,
+            )
+            inverters.append(
+                Inverter(UnicastSocket(peer[0], peer[1], timeout), response.source)
+            )
             retry = 0
         if retry:
             sock.send(device.get_data())
@@ -371,16 +410,16 @@ class Inverter:
 
     CODE_DAY_YIELD = 0x2622
     CODE_TOTAL_YIELD = 0x2601
-    CODE_DC_POWER = 0x251e
-    CODE_DC_INPUT_VOLTAGE = 0x451f
+    CODE_DC_POWER = 0x251E
+    CODE_DC_INPUT_VOLTAGE = 0x451F
     CODE_DC_INPUT_CURRENT = 0x4521
-    CODE_AC_POWER = 0x263f
+    CODE_AC_POWER = 0x263F
     CODE_AC_POWER_L1 = 0x4640
     CODE_AC_POWER_L2 = 0x4641
     CODE_AC_POWER_L3 = 0x4642
     CODE_AC_VOLTAGE_L1 = 0x4648
     CODE_AC_VOLTAGE_L2 = 0x4649
-    CODE_AC_VOLTAGE_L3 = 0x464a
+    CODE_AC_VOLTAGE_L3 = 0x464A
     CODE_AC_CURRENT_L1 = 0x4650
     CODE_AC_CURRENT_L2 = 0x4651
     CODE_AC_CURRENT_L3 = 0x4652
@@ -404,7 +443,8 @@ class Inverter:
             destination=self.address,
             command=DeviceDataPacket.CMD_JOB_REQUEST,
             obj=Inverter.OBJ_LOGIN,
-            job_num=Inverter.JOB_NUM_LOGIN)
+            job_num=Inverter.JOB_NUM_LOGIN,
+        )
         packet.data = encoded[0:12]
         packet.add_param(7 if user_type == 0x88 else 10)
         packet.add_param(300)
@@ -429,14 +469,15 @@ class Inverter:
             source=self.local_address,
             destination=self.address,
             command=DeviceDataPacket.CMD_READ_REQUEST,
-            obj=0x5400)
+            obj=0x5400,
+        )
         packet.add_param(0x262200)
         packet.add_param(0x2622FF)
 
         self.socket.send(packet.get_data())
         response = DeviceDataPacket(self.socket.recv()).decode_read_response()
-        assert(len(response) == 1)
-        assert(response[0].code == Inverter.CODE_DAY_YIELD)
+        assert len(response) == 1
+        assert response[0].code == Inverter.CODE_DAY_YIELD
 
         energy = response[0].data
         logging.debug("Day yield: %d Wh (%.3f kWh)", energy, energy / 1000.0)
@@ -447,18 +488,18 @@ class Inverter:
             source=self.local_address,
             destination=self.address,
             command=DeviceDataPacket.CMD_READ_REQUEST,
-            obj=0x5400)
+            obj=0x5400,
+        )
         packet.add_param(0x260100)
         packet.add_param(0x2601FF)
 
         self.socket.send(packet.get_data())
         response = DeviceDataPacket(self.socket.recv()).decode_read_response()
-        assert(len(response) == 1)
-        assert(response[0].code == Inverter.CODE_TOTAL_YIELD)
+        assert len(response) == 1
+        assert response[0].code == Inverter.CODE_TOTAL_YIELD
 
         energy = response[0].data
-        logging.debug("Total yield: %d Wh (%.3f MWh)",
-                      energy, energy / 1000.0 / 1000.0)
+        logging.debug("Total yield: %d Wh (%.3f MWh)", energy, energy / 1000.0 / 1000.0)
         return energy
 
     def get_dc_data(self):
@@ -466,7 +507,8 @@ class Inverter:
             source=self.local_address,
             destination=self.address,
             command=DeviceDataPacket.CMD_READ_REQUEST,
-            obj=0x5380)
+            obj=0x5380,
+        )
         packet.add_param(0x251E00)
         packet.add_param(0x4521FF)
 
@@ -478,7 +520,7 @@ class Inverter:
         current = [None, None]
 
         for r in response:
-            assert(r.cls == 1 or r.cls == 2)
+            assert r.cls == 1 or r.cls == 2
             if r.code == Inverter.CODE_DC_POWER:
                 power[r.cls - 1] = r.data[0]
             elif r.code == Inverter.CODE_DC_INPUT_VOLTAGE:
@@ -492,8 +534,12 @@ class Inverter:
             else:
                 logging.debug(
                     "DC input %d: %.2f V, %.3f A, %d W (calc %.3f W)",
-                    i, voltage[i], current[i], power[i],
-                    voltage[i] * current[i])
+                    i,
+                    voltage[i],
+                    current[i],
+                    power[i],
+                    voltage[i] * current[i],
+                )
 
         return (power, voltage, current)
 
@@ -502,9 +548,10 @@ class Inverter:
             source=self.local_address,
             destination=self.address,
             command=DeviceDataPacket.CMD_READ_REQUEST,
-            obj=0x5100)
+            obj=0x5100,
+        )
         packet.add_param(0x464000)
-        packet.add_param(0x4655ff)
+        packet.add_param(0x4655FF)
 
         self.socket.send(packet.get_data())
         response = DeviceDataPacket(self.socket.recv()).decode_read_response()
@@ -514,23 +561,32 @@ class Inverter:
         current = 3 * [None]
 
         for r in response:
-            if r.code in [Inverter.CODE_AC_POWER_L1,
-                          Inverter.CODE_AC_POWER_L2,
-                          Inverter.CODE_AC_POWER_L3]:
+            if r.code in [
+                Inverter.CODE_AC_POWER_L1,
+                Inverter.CODE_AC_POWER_L2,
+                Inverter.CODE_AC_POWER_L3,
+            ]:
                 power[r.code - Inverter.CODE_AC_POWER_L1] = r.data[0]
-            elif r.code in [Inverter.CODE_AC_VOLTAGE_L1,
-                            Inverter.CODE_AC_VOLTAGE_L2,
-                            Inverter.CODE_AC_VOLTAGE_L3]:
-                voltage[r.code - Inverter.CODE_AC_VOLTAGE_L1] = \
-                    self._to_voltage(r.data[0])
-            elif r.code in [Inverter.CODE_AC_CURRENT_L1,
-                            Inverter.CODE_AC_CURRENT_L2,
-                            Inverter.CODE_AC_CURRENT_L3]:
-                current[r.code - Inverter.CODE_AC_CURRENT_L1] = \
-                    self._to_current(r.data[0])
+            elif r.code in [
+                Inverter.CODE_AC_VOLTAGE_L1,
+                Inverter.CODE_AC_VOLTAGE_L2,
+                Inverter.CODE_AC_VOLTAGE_L3,
+            ]:
+                voltage[r.code - Inverter.CODE_AC_VOLTAGE_L1] = self._to_voltage(
+                    r.data[0]
+                )
+            elif r.code in [
+                Inverter.CODE_AC_CURRENT_L1,
+                Inverter.CODE_AC_CURRENT_L2,
+                Inverter.CODE_AC_CURRENT_L3,
+            ]:
+                current[r.code - Inverter.CODE_AC_CURRENT_L1] = self._to_current(
+                    r.data[0]
+                )
 
-        logging.debug("AC: power %s W, voltage %s V, current %s A",
-                      power, voltage, current)
+        logging.debug(
+            "AC: power %s W, voltage %s V, current %s A", power, voltage, current
+        )
         return (power, voltage, current)
 
     def get_ac_total_power(self):
@@ -538,13 +594,14 @@ class Inverter:
             source=self.local_address,
             destination=self.address,
             command=DeviceDataPacket.CMD_READ_REQUEST,
-            obj=0x5100)
+            obj=0x5100,
+        )
         packet.add_param(0x263F00)
-        packet.add_param(0x263Fff)
+        packet.add_param(0x263FFF)
 
         self.socket.send(packet.get_data())
         response = DeviceDataPacket(self.socket.recv()).decode_read_response()
-        assert(len(response) == 1)
+        assert len(response) == 1
 
         power = response[0].data[0]
         if power is not None:
@@ -559,23 +616,25 @@ class Inverter:
             source=self.local_address,
             destination=self.address,
             command=DeviceDataPacket.CMD_READ_REQUEST,
-            obj=0x5800)
-        packet.add_param(0x821e00)
-        packet.add_param(0x8220ff)
+            obj=0x5800,
+        )
+        packet.add_param(0x821E00)
+        packet.add_param(0x8220FF)
 
         self.socket.send(packet.get_data())
         response = DeviceDataPacket(self.socket.recv())
         response.decode_read_response()
-        #response = DeviceDataPacket(self.socket.recv())
-        #response.decode_read_response()
+        # response = DeviceDataPacket(self.socket.recv())
+        # response.decode_read_response()
 
     def get_day_data(self, start, end):
         packet = DeviceDataPacket(
             source=self.local_address,
             destination=self.address,
             command=DeviceDataPacket.CMD_READ_REQUEST,
-            obj=0x7000)
-        packet.control = 0xe0;
+            obj=0x7000,
+        )
+        packet.control = 0xE0
         packet.add_param(int(start.timestamp()))
         packet.add_param(int(end.timestamp()))
 
@@ -585,13 +644,16 @@ class Inverter:
 
             offset = 0
             while offset + 12 <= len(response.data):
-                (timestamp, energy) = struct.unpack_from(
-                    "<LQ", response.data, offset)
+                (timestamp, energy) = struct.unpack_from("<LQ", response.data, offset)
                 offset += 12
                 timestamp = datetime.fromtimestamp(timestamp)
-                logging.debug("Yield @ %s: %d Wh (%.3f MWh)",
-                              timestamp, energy, energy / 1000.0 / 1000.0)
-            assert(offset == len(response.data))
+                logging.debug(
+                    "Yield @ %s: %d Wh (%.3f MWh)",
+                    timestamp,
+                    energy,
+                    energy / 1000.0 / 1000.0,
+                )
+            assert offset == len(response.data)
             if response.packet_count == 0:
                 break
 
@@ -600,8 +662,9 @@ class Inverter:
             source=self.local_address,
             destination=self.address,
             command=DeviceDataPacket.CMD_READ_REQUEST,
-            obj=0x7020)
-        packet.control = 0xe0;
+            obj=0x7020,
+        )
+        packet.control = 0xE0
         packet.add_param(int(start.timestamp()))
         packet.add_param(int(end.timestamp()))
 
@@ -611,13 +674,16 @@ class Inverter:
 
             offset = 0
             while offset + 12 <= len(response.data):
-                (timestamp, energy) = struct.unpack_from(
-                    "<LQ", response.data, offset)
+                (timestamp, energy) = struct.unpack_from("<LQ", response.data, offset)
                 offset += 12
                 timestamp = datetime.fromtimestamp(timestamp)
-                logging.debug("Yield @ %s: %d Wh (%.3f MWh)",
-                              timestamp, energy, energy / 1000.0 / 1000.0)
-            assert(offset == len(response.data))
+                logging.debug(
+                    "Yield @ %s: %d Wh (%.3f MWh)",
+                    timestamp,
+                    energy,
+                    energy / 1000.0 / 1000.0,
+                )
+            assert offset == len(response.data)
             if response.packet_count == 0:
                 break
 
@@ -627,16 +693,19 @@ class Inverter:
             source=self.local_address,
             command=DeviceDataPacket.CMD_JOB_LOGOFF,
             obj=Inverter.OBJ_LOGIN,
-            job_num=Inverter.JOB_NUM_LOGOUT)
+            job_num=Inverter.JOB_NUM_LOGOUT,
+        )
         packet.add_param(-1)
         self.socket.send(packet.get_data())
-        #DeviceDataPacket(self.socket.recv())
+        # DeviceDataPacket(self.socket.recv())
 
 
-if __name__ == '__main__':
-    logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s',
-                        level=logging.DEBUG)
+if __name__ == "__main__":
+    logging.basicConfig(
+        format="%(asctime)s %(levelname)s: %(message)s", level=logging.DEBUG
+    )
     import sys
+
     sock = UnicastSocket(sys.argv[1]) if len(sys.argv) > 1 else None
     for inverter in detect_inverters(sock=sock, timeout=2):
         inverter.local_address = Address(1, 654321)
@@ -646,8 +715,8 @@ if __name__ == '__main__':
         inverter.get_dc_data()
         inverter.get_ac_data()
         inverter.get_ac_total_power()
-        #now = datetime.now()
-        #inverter.get_day_data(now - timedelta(hours=5), now)
-        #inverter.get_month_data(now - timedelta(days=5), now)
+        # now = datetime.now()
+        # inverter.get_day_data(now - timedelta(hours=5), now)
+        # inverter.get_month_data(now - timedelta(days=5), now)
         inverter.get()
         inverter.logout()

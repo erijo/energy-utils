@@ -35,30 +35,30 @@ class MonthEnergy:
         total = None
         hours = 24 * [None]
 
-        for entry in self.data['series'][0]['data']:
-            if entry and date.day == int(entry['name']):
-                total = int(entry['y'] * 1000)
+        for entry in self.data["series"][0]["data"]:
+            if entry and date.day == int(entry["name"]):
+                total = int(entry["y"] * 1000)
                 break
 
         if total is None:
             return (total, hours)
 
-        for entry in self.data['drilldown']['series']:
-            if entry and date.day == int(entry['name']):
-                for h in entry['data']:
-                    hour = int(h['name'])
-                    assert(hour >= 0 and hour <= 23)
-                    assert(h['y'] >= 0)
-                    hours[hour] = int(h['y'] * 1000)
+        for entry in self.data["drilldown"]["series"]:
+            if entry and date.day == int(entry["name"]):
+                for h in entry["data"]:
+                    hour = int(h["name"])
+                    assert hour >= 0 and hour <= 23
+                    assert h["y"] >= 0
+                    hours[hour] = int(h["y"] * 1000)
         return (total, hours)
 
 
 class GoteborgEnergi:
-    SERVER = 'elavtal.goteborgenergi.se'
-    LOGIN_PATH = '/din-sida-info/logga-in/'
-    LOGOUT_PATH = '/din-sida/elforbrukning-och-elavtal/Logout/'
-    ENERGY_PATH = '/din-sida/elforbrukning-och-elavtal/'
-    BY_HOUR_PATH = '/din-sida/elforbrukning-och-elavtal/GetConsumptionByHour/'
+    SERVER = "elavtal.goteborgenergi.se"
+    LOGIN_PATH = "/din-sida-info/logga-in/"
+    LOGOUT_PATH = "/din-sida/elforbrukning-och-elavtal/Logout/"
+    ENERGY_PATH = "/din-sida/elforbrukning-och-elavtal/"
+    BY_HOUR_PATH = "/din-sida/elforbrukning-och-elavtal/GetConsumptionByHour/"
 
     def __init__(self, username, password):
         self.username = username
@@ -70,11 +70,11 @@ class GoteborgEnergi:
         if not self.cookies:
             self.cookies = cookies.SimpleCookie()
 
-        for c in response.getheader('Set-Cookie', '').split(', '):
+        for c in response.getheader("Set-Cookie", "").split(", "):
             self.cookies.load(c)
 
-        cookie = self.cookies.output(attrs={}, header='', sep=';')
-        self.headers['Cookie'] = cookie.lstrip()
+        cookie = self.cookies.output(attrs={}, header="", sep=";")
+        self.headers["Cookie"] = cookie.lstrip()
 
     def log_in(self):
         conn = http.HTTPSConnection(GoteborgEnergi.SERVER)
@@ -82,8 +82,12 @@ class GoteborgEnergi:
         conn.request("GET", GoteborgEnergi.LOGIN_PATH)
         response = conn.getresponse()
 
-        logging.debug("Get %s: %d (%s)", GoteborgEnergi.LOGIN_PATH,
-                      response.status, response.reason)
+        logging.debug(
+            "Get %s: %d (%s)",
+            GoteborgEnergi.LOGIN_PATH,
+            response.status,
+            response.reason,
+        )
         if response.status != http.OK:
             raise Exception("Failed to get login page")
 
@@ -91,26 +95,33 @@ class GoteborgEnergi:
 
         match = re.search(
             r'name="__RequestVerificationToken" type="hidden" value="([^"]+)',
-            response.read().decode('utf-8'))
+            response.read().decode("utf-8"),
+        )
         if not match:
             raise Exception("Failed to detect login token")
 
-        params = urllib.parse.urlencode({
-            'ReturnUrl': '',
-            'KeepMeLoggedIn': 'false',
-            'Username': self.username,
-            'Password': self.password,
-            '__RequestVerificationToken': match.group(1)
-        })
+        params = urllib.parse.urlencode(
+            {
+                "ReturnUrl": "",
+                "KeepMeLoggedIn": "false",
+                "Username": self.username,
+                "Password": self.password,
+                "__RequestVerificationToken": match.group(1),
+            }
+        )
 
         headers = self.headers.copy()
-        headers['Content-type'] = 'application/x-www-form-urlencoded'
+        headers["Content-type"] = "application/x-www-form-urlencoded"
 
         conn.request("POST", GoteborgEnergi.LOGIN_PATH, params, headers)
         response = conn.getresponse()
 
-        logging.debug("Post %s: %d (%s)", GoteborgEnergi.LOGIN_PATH,
-                      response.status, response.reason)
+        logging.debug(
+            "Post %s: %d (%s)",
+            GoteborgEnergi.LOGIN_PATH,
+            response.status,
+            response.reason,
+        )
         if response.status != http.FOUND:
             raise Exception("Failed to log in")
 
@@ -123,8 +134,12 @@ class GoteborgEnergi:
         conn.request("GET", GoteborgEnergi.LOGOUT_PATH, headers=self.headers)
         response = conn.getresponse()
 
-        logging.debug("Get %s: %d (%s)", GoteborgEnergi.LOGOUT_PATH,
-                      response.status, response.reason)
+        logging.debug(
+            "Get %s: %d (%s)",
+            GoteborgEnergi.LOGOUT_PATH,
+            response.status,
+            response.reason,
+        )
         if response.status != http.FOUND:
             raise Exception("Faild to log out")
 
@@ -134,52 +149,62 @@ class GoteborgEnergi:
     def get_month_energy(self, podid, date):
         conn = http.HTTPSConnection(GoteborgEnergi.SERVER)
 
-        path = "%s?%s" % (GoteborgEnergi.ENERGY_PATH,
-                          urllib.parse.urlencode({'podid': podid}))
+        path = "%s?%s" % (
+            GoteborgEnergi.ENERGY_PATH,
+            urllib.parse.urlencode({"podid": podid}),
+        )
         conn.request("GET", path, headers=self.headers)
         response = conn.getresponse()
 
-        logging.debug("Get %s: %d (%s)", path,
-                      response.status, response.reason)
+        logging.debug("Get %s: %d (%s)", path, response.status, response.reason)
         if response.status != http.OK:
             raise Exception("Faild to load energy page")
 
         match = re.search(
             r'<form.*? id="get-consumption-form" .*?'
             '<input name="__RequestVerificationToken" .*? value="([^"]+)"',
-            response.read().decode('utf-8'),
-            re.S)
+            response.read().decode("utf-8"),
+            re.S,
+        )
         if not match:
             raise Exception("Failed to detect energy token")
 
-        params = urllib.parse.urlencode({
-            'PodId': podid,
-            'year': date.year,
-            'month': date.month,
-            '__RequestVerificationToken': match.group(1)
-        })
+        params = urllib.parse.urlencode(
+            {
+                "PodId": podid,
+                "year": date.year,
+                "month": date.month,
+                "__RequestVerificationToken": match.group(1),
+            }
+        )
 
         headers = self.headers.copy()
-        headers['Content-type'] = 'application/x-www-form-urlencoded'
+        headers["Content-type"] = "application/x-www-form-urlencoded"
 
         conn.request("POST", GoteborgEnergi.BY_HOUR_PATH, params, headers)
         response = conn.getresponse()
 
-        logging.debug("Post %s: %d (%s)", GoteborgEnergi.BY_HOUR_PATH,
-                      response.status, response.reason)
+        logging.debug(
+            "Post %s: %d (%s)",
+            GoteborgEnergi.BY_HOUR_PATH,
+            response.status,
+            response.reason,
+        )
         if response.status != http.OK:
             raise Exception("Failed to get by hour energy")
 
-        data = json.loads(response.read().decode('utf-8'))
+        data = json.loads(response.read().decode("utf-8"))
         conn.close()
 
         return MonthEnergy(data)
 
 
-if __name__ == '__main__':
-    logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s',
-                        level=logging.DEBUG)
+if __name__ == "__main__":
+    logging.basicConfig(
+        format="%(asctime)s %(levelname)s: %(message)s", level=logging.DEBUG
+    )
     import sys
+
     ge = GoteborgEnergi(sys.argv[1], sys.argv[2])
     ge.log_in()
     energy = ge.get_month_energy(sys.argv[3], date.today())

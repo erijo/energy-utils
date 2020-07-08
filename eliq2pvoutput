@@ -32,11 +32,13 @@ def initialize_database(path):
     conn = sqlite3.connect(path, detect_types=sqlite3.PARSE_COLNAMES)
     cur = conn.cursor()
     cur.execute(
-        '''CREATE TABLE IF NOT EXISTS eliq_day_data
-        (date TEXT PRIMARY KEY, avgpower INTEGEAR, energy INTEGEAR)''')
+        """CREATE TABLE IF NOT EXISTS eliq_day_data
+        (date TEXT PRIMARY KEY, avgpower INTEGEAR, energy INTEGEAR)"""
+    )
     cur.execute(
-        '''CREATE TABLE IF NOT EXISTS eliq_6min_data
-        (timestamp TEXT PRIMARY KEY, avgpower INTEGEAR, energy INTEGEAR)''')
+        """CREATE TABLE IF NOT EXISTS eliq_6min_data
+        (timestamp TEXT PRIMARY KEY, avgpower INTEGEAR, energy INTEGEAR)"""
+    )
     conn.commit()
     return conn
 
@@ -44,8 +46,9 @@ def initialize_database(path):
 def save_day_data(conn, eliq, channel_id):
     cur = conn.cursor()
     result = cur.execute(
-        '''SELECT date as "date [date]" FROM eliq_day_data
-        ORDER BY date DESC LIMIT 1''')
+        """SELECT date as "date [date]" FROM eliq_day_data
+        ORDER BY date DESC LIMIT 1"""
+    )
 
     start = result.fetchone()
     if start is not None:
@@ -60,22 +63,23 @@ def save_day_data(conn, eliq, channel_id):
     while start < end:
         data = eliq.get_day_data(start, end, channel_id)
         for entry in data.data:
-            assert((entry.time_end - entry.time_start).days == 1)
-            entries.append((entry.time_start.date(),
-                            int(entry.avgpower),
-                            int(entry.energy)))
+            assert (entry.time_end - entry.time_start).days == 1
+            entries.append(
+                (entry.time_start.date(), int(entry.avgpower), int(entry.energy))
+            )
         start = data.enddate.date()
 
     if entries:
-        cur.executemany('INSERT INTO eliq_day_data VALUES (?, ?, ?)', entries)
+        cur.executemany("INSERT INTO eliq_day_data VALUES (?, ?, ?)", entries)
         conn.commit()
 
 
 def save_6min_data(conn, eliq, channel_id):
     cur = conn.cursor()
     result = cur.execute(
-        '''SELECT timestamp as "timestamp [timestamp]"
-        FROM eliq_6min_data ORDER BY timestamp DESC LIMIT 1''')
+        """SELECT timestamp as "timestamp [timestamp]"
+        FROM eliq_6min_data ORDER BY timestamp DESC LIMIT 1"""
+    )
 
     start = result.fetchone()
     if start is not None:
@@ -83,8 +87,9 @@ def save_6min_data(conn, eliq, channel_id):
     else:
         # Try to get start date from eliq_day_data instead
         result = cur.execute(
-            '''SELECT date as "date [date]" FROM eliq_day_data
-            ORDER BY date ASC LIMIT 1''')
+            """SELECT date as "date [date]" FROM eliq_day_data
+            ORDER BY date ASC LIMIT 1"""
+        )
         start = result.fetchone()
         if start is not None:
             start = datetime.combine(start[0], time())
@@ -97,82 +102,81 @@ def save_6min_data(conn, eliq, channel_id):
 
     while start < end:
         entries = []
-        data = eliq.get_6min_data(
-            start, (start + timedelta(days=1)).date(), channel_id)
+        data = eliq.get_6min_data(start, (start + timedelta(days=1)).date(), channel_id)
         for entry in data.data:
-            assert(entry.time_start.date() == entry.time_end.date()
-                   or entry.time_end.time() == time(0, 0, 0))
-            entries.append((entry.time_end,
-                            int(entry.avgpower),
-                            int(entry.energy)))
+            assert entry.time_start.date() == entry.time_end.date() or entry.time_end.time() == time(
+                0, 0, 0
+            )
+            entries.append((entry.time_end, int(entry.avgpower), int(entry.energy)))
         start = data.enddate
-        cur.executemany('INSERT INTO eliq_6min_data VALUES (?, ?, ?)', entries)
+        cur.executemany("INSERT INTO eliq_6min_data VALUES (?, ?, ?)", entries)
         conn.commit()
 
 
 def main():
-    logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s')
+    logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s")
 
-    parser = argparse.ArgumentParser(
-        description="Connect ELIQ Online to PVoutput.org")
-    parser.add_argument('config', help="Configuration file to use")
-    parser.add_argument('database', help="Path to database")
-    parser.add_argument('-d', '--debug', help="Enable debug output",
-                        action="store_true")
-    parser.add_argument('-n', '--dry-run', help="Don't send any data",
-                        action="store_true")
+    parser = argparse.ArgumentParser(description="Connect ELIQ Online to PVoutput.org")
+    parser.add_argument("config", help="Configuration file to use")
+    parser.add_argument("database", help="Path to database")
+    parser.add_argument(
+        "-d", "--debug", help="Enable debug output", action="store_true"
+    )
+    parser.add_argument(
+        "-n", "--dry-run", help="Don't send any data", action="store_true"
+    )
     args = parser.parse_args()
 
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
 
     config = configparser.ConfigParser()
-    config['eliq'] = {}
-    config['pvoutput'] = {}
+    config["eliq"] = {}
+    config["pvoutput"] = {}
     config.read(args.config)
 
     modified = False
-    if not config['eliq'].get('accesstoken'):
-        config['eliq']['accesstoken'] = input("ELIQ Online access token: ")
+    if not config["eliq"].get("accesstoken"):
+        config["eliq"]["accesstoken"] = input("ELIQ Online access token: ")
         modified = True
-    if not config['eliq'].get('channelid'):
-        config['eliq']['channelid'] = input("ELIQ Online channel ID: ")
+    if not config["eliq"].get("channelid"):
+        config["eliq"]["channelid"] = input("ELIQ Online channel ID: ")
         modified = True
 
-    if not config['pvoutput'].get('apikey'):
-        config['pvoutput']['apikey'] = input("PVOutput API key: ")
+    if not config["pvoutput"].get("apikey"):
+        config["pvoutput"]["apikey"] = input("PVOutput API key: ")
         modified = True
-    if not config['pvoutput'].get('systemid'):
-        config['pvoutput']['systemid'] = input("PVOutput System Id: ")
+    if not config["pvoutput"].get("systemid"):
+        config["pvoutput"]["systemid"] = input("PVOutput System Id: ")
         modified = True
 
     if modified:
-        with open(args.config, 'w') as configfile:
+        with open(args.config, "w") as configfile:
             config.write(configfile)
 
     conn = initialize_database(args.database)
-    eliq = EliqOnline(config['eliq']['accesstoken'])
+    eliq = EliqOnline(config["eliq"]["accesstoken"])
 
     # Update eliq data
-    save_day_data(conn, eliq, config['eliq']['channelid'])
-    save_6min_data(conn, eliq, config['eliq']['channelid'])
+    save_day_data(conn, eliq, config["eliq"]["channelid"])
+    save_6min_data(conn, eliq, config["eliq"]["channelid"])
 
-    pvoutput = PvOutput(config['pvoutput']['apikey'],
-                        config['pvoutput']['systemid'],
-                        args.dry_run)
+    pvoutput = PvOutput(
+        config["pvoutput"]["apikey"], config["pvoutput"]["systemid"], args.dry_run
+    )
 
     cur = conn.cursor()
     result = cur.execute(
-        '''SELECT timestamp as "timstamp [timestamp]", sum(energy), avgpower
-        from eliq_6min_data WHERE date(timestamp) = date("now")''')
+        """SELECT timestamp as "timstamp [timestamp]", sum(energy), avgpower
+        from eliq_6min_data WHERE date(timestamp) = date("now")"""
+    )
     if result is not None:
         data = result.fetchone()
         status = DefaultStatus._replace(
-            datetime=data[0],
-            energy_consumption=data[1],
-            power_consumption=data[2])
+            datetime=data[0], energy_consumption=data[1], power_consumption=data[2]
+        )
         pvoutput.add_status(status, net=True)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

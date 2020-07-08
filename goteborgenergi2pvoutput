@@ -32,74 +32,85 @@ PEAK_HOURS = slice(8, 17)
 HIGH_SHOULDER_HOURS = slice(17, 20)
 SHOULDER_HOURS_2 = slice(20, 23)
 
+
 def main():
-    logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s')
+    logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s")
 
     parser = argparse.ArgumentParser(
-        description="Connect goteborgenergi.se to PVoutput.org")
-    parser.add_argument('config', help="Configuration file to use")
-    parser.add_argument('-d', '--debug', help="Enable debug output",
-                        action="store_true")
-    parser.add_argument('-n', '--dry-run', help="Don't send any data",
-                        action="store_true")
+        description="Connect goteborgenergi.se to PVoutput.org"
+    )
+    parser.add_argument("config", help="Configuration file to use")
+    parser.add_argument(
+        "-d", "--debug", help="Enable debug output", action="store_true"
+    )
+    parser.add_argument(
+        "-n", "--dry-run", help="Don't send any data", action="store_true"
+    )
     args = parser.parse_args()
 
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
 
     config = configparser.ConfigParser()
-    config['goteborgenergi'] = {}
-    config['pvoutput'] = {}
+    config["goteborgenergi"] = {}
+    config["pvoutput"] = {}
     config.read(args.config)
 
     modified = False
-    if not config['goteborgenergi'].get('username'):
-        config['goteborgenergi']['username'] = \
-            input("goteborgenergi.se username: ")
+    if not config["goteborgenergi"].get("username"):
+        config["goteborgenergi"]["username"] = input("goteborgenergi.se username: ")
         modified = True
-    if not config['goteborgenergi'].get('password'):
-        config['goteborgenergi']['password'] = \
-            getpass("goteborgenergi.se password: ")
+    if not config["goteborgenergi"].get("password"):
+        config["goteborgenergi"]["password"] = getpass("goteborgenergi.se password: ")
         modified = True
-    if not config['goteborgenergi'].get('import'):
-        config['goteborgenergi']['import'] = input("import podid: ")
+    if not config["goteborgenergi"].get("import"):
+        config["goteborgenergi"]["import"] = input("import podid: ")
         modified = True
-    if not config['goteborgenergi'].get('export'):
-        config['goteborgenergi']['export'] = input("export podid: ")
+    if not config["goteborgenergi"].get("export"):
+        config["goteborgenergi"]["export"] = input("export podid: ")
         modified = True
 
-    if not config['pvoutput'].get('apikey'):
-        config['pvoutput']['apikey'] = input("PVOutput API key: ")
+    if not config["pvoutput"].get("apikey"):
+        config["pvoutput"]["apikey"] = input("PVOutput API key: ")
         modified = True
-    if not config['pvoutput'].get('systemid'):
-        config['pvoutput']['systemid'] = input("PVOutput System Id: ")
+    if not config["pvoutput"].get("systemid"):
+        config["pvoutput"]["systemid"] = input("PVOutput System Id: ")
         modified = True
 
     if modified:
-        with open(args.config, 'w') as configfile:
+        with open(args.config, "w") as configfile:
             config.write(configfile)
 
     missing = []
 
-    pvoutput = PvOutput(config['pvoutput']['apikey'],
-                        config['pvoutput']['systemid'],
-                        args.dry_run)
+    pvoutput = PvOutput(
+        config["pvoutput"]["apikey"], config["pvoutput"]["systemid"], args.dry_run
+    )
 
     for output in pvoutput.get_output(limit=35):
         if output.date == datetime.date.today():
             continue
-        if (output.import_peak is None
-            or (output.import_peak + output.import_off_peak
-                + output.import_shoulder + output.import_high_shoulder) == 0):
+        if (
+            output.import_peak is None
+            or (
+                output.import_peak
+                + output.import_off_peak
+                + output.import_shoulder
+                + output.import_high_shoulder
+            )
+            == 0
+        ):
             missing.append(output.date)
 
-    logging.debug("Missing export/import for: %s",
-                  [d.strftime("%Y-%m-%d") for d in missing])
+    logging.debug(
+        "Missing export/import for: %s", [d.strftime("%Y-%m-%d") for d in missing]
+    )
     if not missing:
         return
 
-    ge = GoteborgEnergi(config['goteborgenergi']['username'],
-                        config['goteborgenergi']['password'])
+    ge = GoteborgEnergi(
+        config["goteborgenergi"]["username"], config["goteborgenergi"]["password"]
+    )
     ge.log_in()
 
     imp = None
@@ -107,28 +118,33 @@ def main():
     month = None
     for date in missing:
         if date.month != month:
-            imp = ge.get_month_energy(config['goteborgenergi']['import'], date)
-            exp = ge.get_month_energy(config['goteborgenergi']['export'], date)
+            imp = ge.get_month_energy(config["goteborgenergi"]["import"], date)
+            exp = ge.get_month_energy(config["goteborgenergi"]["export"], date)
             month = date.month
         energy_imp = imp.get_day_energy(date)
         energy_exp = exp.get_day_energy(date)
         if energy_imp[0] is None or energy_exp[0] is None:
             continue
-        logging.debug("Found export %d Wh and import %d Wh for %s",
-                      energy_exp[0], energy_imp[0], date.strftime("%Y-%m-%d"))
+        logging.debug(
+            "Found export %d Wh and import %d Wh for %s",
+            energy_exp[0],
+            energy_imp[0],
+            date.strftime("%Y-%m-%d"),
+        )
         imp_peak = sum(energy_imp[1][PEAK_HOURS])
-        imp_shoulder = sum(energy_imp[1][SHOULDER_HOURS_1]) \
-                       + sum(energy_imp[1][SHOULDER_HOURS_2])
+        imp_shoulder = sum(energy_imp[1][SHOULDER_HOURS_1]) + sum(
+            energy_imp[1][SHOULDER_HOURS_2]
+        )
         imp_high_shoulder = sum(energy_imp[1][HIGH_SHOULDER_HOURS])
-        imp_off_peak = energy_imp[0] \
-                       - sum([imp_peak, imp_shoulder, imp_high_shoulder])
+        imp_off_peak = energy_imp[0] - sum([imp_peak, imp_shoulder, imp_high_shoulder])
         output = DefaultOutput._replace(
             date=date,
             exported=energy_exp[0],
             import_peak=imp_peak,
             import_off_peak=imp_off_peak,
             import_shoulder=imp_shoulder,
-            import_high_shoulder=imp_high_shoulder)
+            import_high_shoulder=imp_high_shoulder,
+        )
         # Must explicity set consumption if nothing was generated as pvoutput
         # doesn't calculate it in that case.
         if output.exported == 0:
@@ -140,5 +156,5 @@ def main():
     ge.log_out()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

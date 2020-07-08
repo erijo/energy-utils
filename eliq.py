@@ -26,30 +26,31 @@ import logging
 import urllib.parse
 
 
-Data = namedtuple('Data', ['channelid', 'startdate', 'enddate',
-                           'intervaltype', 'data'])
-DataEntry = namedtuple('DataEntry', ['avgpower', 'energy', 'temp_out',
-                                     'time_start', 'time_end'])
-DataNow = namedtuple('DataNow', ['channelid', 'createddate', 'power'])
+Data = namedtuple("Data", ["channelid", "startdate", "enddate", "intervaltype", "data"])
+DataEntry = namedtuple(
+    "DataEntry", ["avgpower", "energy", "temp_out", "time_start", "time_end"]
+)
+DataNow = namedtuple("DataNow", ["channelid", "createddate", "power"])
 
 
 def parse_datetime(date):
-    return datetime.strptime(date, '%Y-%m-%dT%H:%M:%S')
+    return datetime.strptime(date, "%Y-%m-%dT%H:%M:%S")
 
 
 class EliqOnline:
-    def __init__(self, access_token, server='my.eliq.io',
-                 port=http.HTTPS_PORT):
+    def __init__(self, access_token, server="my.eliq.io", port=http.HTTPS_PORT):
         self.access_token = access_token
         self.server = server
         self.port = port
 
     def _send_request(self, url, params):
         # Don't include access token in log
-        params['accesstoken'] = "%s.../%d" % (
-            self.access_token[0:4], len(self.access_token))
+        params["accesstoken"] = "%s.../%d" % (
+            self.access_token[0:4],
+            len(self.access_token),
+        )
         logging.debug("GET %s: %s", url, params)
-        params['accesstoken'] = self.access_token
+        params["accesstoken"] = self.access_token
 
         conn = http.HTTPSConnection(self.server, self.port)
         conn.request("GET", "%s?%s" % (url, urllib.parse.urlencode(params)))
@@ -57,7 +58,7 @@ class EliqOnline:
         response = conn.getresponse()
         status = response.status
         reason = response.reason
-        body = response.read().decode('utf-8')
+        body = response.read().decode("utf-8")
         logging.debug("HTTP response: %d (%s): %s", status, reason, body)
 
         if status != http.OK and status != http.CREATED:
@@ -69,45 +70,51 @@ class EliqOnline:
     def get_data_now(self, channel_id=None):
         params = {}
         if channel_id is not None:
-            params['channelid'] = channel_id
+            params["channelid"] = channel_id
 
         (_, _, body) = self._send_request("/api/datanow", params)
         result = json.loads(body)
 
-        return DataNow(result['channelid'],
-                       parse_datetime(result['createddate']),
-                       result['power'])
+        return DataNow(
+            result["channelid"], parse_datetime(result["createddate"]), result["power"]
+        )
 
     def _get_data(self, interval_type, start, end=None, channel_id=None):
-        date_format = {
-            'day': '%Y-%m-%d', '6min': '%Y-%m-%dT%H:%M'}[interval_type]
+        date_format = {"day": "%Y-%m-%d", "6min": "%Y-%m-%dT%H:%M"}[interval_type]
 
-        params = {'intervaltype': interval_type,
-                  'startdate': start.strftime(date_format)}
+        params = {
+            "intervaltype": interval_type,
+            "startdate": start.strftime(date_format),
+        }
         if end is not None:
-            params['enddate'] = end.strftime(date_format)
+            params["enddate"] = end.strftime(date_format)
         if channel_id is not None:
-            params['channelid'] = channel_id
+            params["channelid"] = channel_id
 
         (_, _, body) = self._send_request("/api/data", params)
         result = json.loads(body)
 
-        data = Data(result['channelid'],
-                    parse_datetime(result['startdate']),
-                    parse_datetime(result['enddate']),
-                    result['intervaltype'],
-                    [])
-        for entry in result['data']:
-            data.data.append(DataEntry(
-                entry['avgpower'],
-                entry['energy'],
-                entry['temp_out'],
-                parse_datetime(entry['time_start']),
-                parse_datetime(entry['time_end'])))
+        data = Data(
+            result["channelid"],
+            parse_datetime(result["startdate"]),
+            parse_datetime(result["enddate"]),
+            result["intervaltype"],
+            [],
+        )
+        for entry in result["data"]:
+            data.data.append(
+                DataEntry(
+                    entry["avgpower"],
+                    entry["energy"],
+                    entry["temp_out"],
+                    parse_datetime(entry["time_start"]),
+                    parse_datetime(entry["time_end"]),
+                )
+            )
         return data
 
     def get_day_data(self, start, end=None, channel_id=None):
-        return self._get_data('day', start, end, channel_id)
+        return self._get_data("day", start, end, channel_id)
 
     def get_6min_data(self, start, end=None, channel_id=None):
-        return self._get_data('6min', start, end, channel_id)
+        return self._get_data("6min", start, end, channel_id)

@@ -28,16 +28,16 @@ def initialize_database(path):
     conn = sqlite3.connect(path)
     cur = conn.cursor()
     cur.execute(
-        '''CREATE TABLE IF NOT EXISTS temperature
-	(protocol TEXT, model TEXT, id INTEGEAR, timestamp TEXT, temp REAL)''')
+        """CREATE TABLE IF NOT EXISTS temperature
+	(protocol TEXT, model TEXT, id INTEGEAR, timestamp TEXT, temp REAL)"""
+    )
     conn.commit()
     return conn
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Save temperatures from telldus")
-    parser.add_argument('database', help="Path to database")
+    parser = argparse.ArgumentParser(description="Save temperatures from telldus")
+    parser.add_argument("database", help="Path to database")
     args = parser.parse_args()
 
     conn = initialize_database(args.database)
@@ -51,15 +51,22 @@ def main():
         if value.datetime <= limit:
             continue
         try:
-            values.append((sensor.protocol, sensor.model, sensor.id,
-                           value.datetime, float(value.value)))
+            values.append(
+                (
+                    sensor.protocol,
+                    sensor.model,
+                    sensor.id,
+                    value.datetime,
+                    float(value.value),
+                )
+            )
         except ValueError:
             continue
     with conn:
         conn.executemany(
-            'INSERT OR IGNORE INTO temperature VALUES (?, ?, ?, ?, ?)',
-            values)
+            "INSERT OR IGNORE INTO temperature VALUES (?, ?, ?, ?, ?)", values
+        )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

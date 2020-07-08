@@ -31,6 +31,7 @@ import math
 def get_current_temperature(protocol=None, model=None, id=None):
     try:
         from tellcore import telldus
+
         limit = datetime.now() - timedelta(minutes=30)
         for sensor in telldus.TelldusCore().sensors():
             if not sensor.has_temperature():
@@ -50,39 +51,49 @@ def get_current_temperature(protocol=None, model=None, id=None):
 
 
 def main():
-    logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s')
+    logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s")
 
-    parser = argparse.ArgumentParser(
-        description="Connect SMA inverter to PVoutput.org")
-    parser.add_argument('config', help="Configuration file to use")
-    parser.add_argument('-d', '--debug', help="Enable debug output",
-                        action="store_true")
-    parser.add_argument('-n', '--dry-run', help="Don't send any data",
-                        action="store_true")
-    parser.add_argument('-i', '--inverter', help="IP-address of inverter if "
-                        "automatic detection fails or can't be used "
-                        "(e.g. if you have multiple inverters or use Windows)")
-    parser.add_argument('-t', '--timeout', type=int, default=2,
-                        help="Timeout to use for network operations")
+    parser = argparse.ArgumentParser(description="Connect SMA inverter to PVoutput.org")
+    parser.add_argument("config", help="Configuration file to use")
+    parser.add_argument(
+        "-d", "--debug", help="Enable debug output", action="store_true"
+    )
+    parser.add_argument(
+        "-n", "--dry-run", help="Don't send any data", action="store_true"
+    )
+    parser.add_argument(
+        "-i",
+        "--inverter",
+        help="IP-address of inverter if "
+        "automatic detection fails or can't be used "
+        "(e.g. if you have multiple inverters or use Windows)",
+    )
+    parser.add_argument(
+        "-t",
+        "--timeout",
+        type=int,
+        default=2,
+        help="Timeout to use for network operations",
+    )
     args = parser.parse_args()
 
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
 
     config = configparser.ConfigParser()
-    config['pvoutput'] = {}
+    config["pvoutput"] = {}
     config.read(args.config)
 
     modified = False
-    if not config['pvoutput'].get('apikey'):
-        config['pvoutput']['apikey'] = input("PVOutput API key: ")
+    if not config["pvoutput"].get("apikey"):
+        config["pvoutput"]["apikey"] = input("PVOutput API key: ")
         modified = True
-    if not config['pvoutput'].get('systemid'):
-        config['pvoutput']['systemid'] = input("PVOutput System Id: ")
+    if not config["pvoutput"].get("systemid"):
+        config["pvoutput"]["systemid"] = input("PVOutput System Id: ")
         modified = True
 
     if modified:
-        with open(args.config, 'w') as configfile:
+        with open(args.config, "w") as configfile:
             config.write(configfile)
 
     temp = get_current_temperature(id=175)
@@ -115,9 +126,9 @@ def main():
     else:
         ac_voltage = None
 
-    pvoutput = PvOutput(config['pvoutput']['apikey'],
-                        config['pvoutput']['systemid'],
-                        args.dry_run)
+    pvoutput = PvOutput(
+        config["pvoutput"]["apikey"], config["pvoutput"]["systemid"], args.dry_run
+    )
 
     status = DefaultStatus._replace(
         datetime=datetime.now(),
@@ -130,12 +141,13 @@ def main():
         extended_3=dc_voltage[0],
         extended_4=dc_voltage[1],
         extended_5=dc_power[0],
-        extended_6=dc_power[1])
+        extended_6=dc_power[1],
+    )
     try:
         pvoutput.add_status(status)
     except:
         logging.exception("Could not add status")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
