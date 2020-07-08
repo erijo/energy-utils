@@ -100,61 +100,67 @@ class EonMonthEnergyHtmlParser(html.parser.HTMLParser):
 
 
 class Eon:
-    MY_PAGES_SERVER = 'minasidor.eon.se'
+    API_SERVER = 'api-nordic.eon.se'
 
-    LOGIN_PATH = '/eon-online/loginservlet'
-    LOGOUT_PATH = '/eon-online/logoutservlet'
+    AUTHORIZATION_PATH = '/neo/oauth/v2/authorization'
+    LOGIN_PATH = '/authn/authenticate/isu-sap-authenticator'
+    LOGOUT_PATH = '/authn/authenticate/logout'
     MONTH_ENERGY_PATH = '/eon-online/eon.consumption.month.sap'
 
-    def __init__(self, user_id, password, user_id_type=1):
-        """Class to access my pages on eon.se
-
-        user_id_type identifies the type of user_id: 1 = e-mail, 2 = social
-        security number (personnummer), 4 = customer number
-
+    def __init__(self, account_id, password):
+        """Class to access "Mitt E.ON".
         """
-        self.user_id = user_id
+        self.account_id = account_id
         self.password = password
-        self.user_id_type = user_id_type
+
+        self.client_id = 'eon-web-light'
 
         self._session = None
 
     def _build_url(self, path):
-        return 'https://%s%s' % (Eon.MY_PAGES_SERVER, path)
+        return 'https://%s%s' % (Eon.API_SERVER, path)
 
     def log_in(self):
         self._session = requests.Session()
 
-        headers = {'Content-Type': 'application/json; charset=utf-8'}
-        data = {'userIdType': self.user_id_type,
-                'userId': self.user_id,
-                'password': self.password,
-                'cookies': 1}
+        payload = {
+            'client_id': self.client_id,
+            'response_type': 'code',
+            'scope': 'cjcv cjip cjmc cjpf cjim nfda openid cjrn movingjourney cjdsp cjero stgo',
+            'redirect_uri': 'https://www.eon.se/bin/eon-se/logincallback'}
+        req = self._session.get(self._build_url(Eon.AUTHORIZATION_PATH),
+                                params=payload)
+        req.raise_for_status()
+
+        payload = {'accountId': self.account_id,
+                   'password': self.password}
 
         req = self._session.post(self._build_url(Eon.LOGIN_PATH),
-                                 headers=headers,
-                                 data=urllib.parse.urlencode(data))
+                                 data=payload)
         req.raise_for_status()
-        response = req.json()
 
-        status = int(response['Status'])
-        if status == 1:
-            return response['Customer']
+        token = re.search(r'name="token" value="([^"]*)"', req.text)[1]
+        state = re.search(r'name="state" value="([^"]*)"', req.text)[1]
 
-        raise LogInError(status,
-                         {2: 'Account locked',
-                          3: 'Account not activated',
-                          4: 'Account no longer active',
-                          5: 'Wrong username and/or password',
-                          6: 'Initial password must be changed',
-                          7: 'No account for customer'}.get(
-                              status, 'Unknown status code'))
+        payload = {'token': token, 'state': state}
+
+        req = self._session.post(self._build_url(Eon.AUTHORIZATION_PATH),
+                                 params={'client_id': self.client_id},
+                                 data=payload)
+        req.raise_for_status()
+
+        payload = {'pagePath': "/content/eon-se/sv_SE/mitt-e-on/din-forbrukning"}
+
+        req = self._session.get("https://www.eon.se/bin/eon-se/codeflow/session",
+                                params=payload)
+        print(req.text)
+        req.raise_for_status()
 
     def log_out(self):
         assert self._session
 
-        req = self._session.post(self._build_url(Eon.LOGOUT_PATH),
-                                 allow_redirects=False)
+        req = self._session.get(self._build_url(Eon.LOGOUT_PATH),
+                                allow_redirects=False)
         req.raise_for_status()
 
         self._session = None
@@ -199,9 +205,21 @@ if __name__ == '__main__':
     from datetime import date
     import sys
 
+    import logging
+    logging.basicConfig()
+    logging.getLogger().setLevel(logging.DEBUG)
+
+    from http.client import HTTPConnection
+    HTTPConnection.debuglevel = 1
+    requests_log = logging.getLogger("requests.packages.urllib3")
+    requests_log.setLevel(logging.DEBUG)
+    requests_log.propagate = True
+
     eon = Eon(sys.argv[1], sys.argv[2])
 
-    c = eon.log_in()
+    eon.log_in()
+    eon.log_out()
+    sys.exit()
     for a in c['Accounts']:
         print("%s account: %s|%s|%s|%s|A" % (
             {'01': 'import', '03': 'export'}.get(a['Kofizsd'], "unknown"),
