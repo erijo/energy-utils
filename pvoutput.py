@@ -109,7 +109,7 @@ class PvOutput:
         )
 
     def send_request(self, url, params, ignore_dry_run=False):
-        params = {k: v for k, v in params.items() if v is not ""}
+        params = {k: v for k, v in params.items() if v != ""}
 
         if self.dry_run and not ignore_dry_run:
             logging.debug("POST to %s: %s (dry-run)", url, params)
