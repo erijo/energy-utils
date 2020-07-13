@@ -11,6 +11,8 @@ A collection of python utils related to energy.
 - pvoutput.py: a class wrapping the
   [pvoutput.org service API](http://pvoutput.org/help.html#api)
 - sma.py: a class for communicating with [SMA inverters](http://www.sma.de/en/)
+- tibber.py: a class for accessing the
+  [Tibber GraphQL API](https://developer.tibber.com/docs/reference)
 
 ## Utils
 - eliq2pvoutput: send data from ELIQ to pvoutput.org. No longer used by myself
@@ -20,3 +22,4 @@ A collection of python utils related to energy.
 - sma2pvoutput: send the current DC voltage and current, AC power and daily
   energy yield to pvoutput. Intended to be run from cron every 5 minutes.
 - templogger: logs the current outdoor temperature to a sqlite database.
+- tibber2pvoutput: update pvoutput.org with export/import data from Tibber.
