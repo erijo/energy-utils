@@ -111,6 +111,7 @@ def main():
     imports = {}
     exports = {}
 
+    prev_date = None
     for consumed in home.consumption(tibber.EnergyResolution.HOURLY, reverse=True):
         day = consumed.date.date()
         if day < first_date:
@@ -118,7 +119,13 @@ def main():
         data = imports.setdefault(day, list())
         if not data:
             data.extend(None for _ in range(24))
-        data[consumed.date.hour] = consumed.consumption
+        if prev_date is not None and prev_date.utcoffset() != consumed.date.utcoffset():
+            for hour in range(consumed.date.hour, prev_date.hour):
+                data[hour] = 0
+            data[consumed.date.hour] += consumed.consumption
+        else:
+            data[consumed.date.hour] = consumed.consumption
+        prev_date = consumed.date
 
     for produced in home.production(tibber.EnergyResolution.DAILY, reverse=True):
         day = produced.date.date()
