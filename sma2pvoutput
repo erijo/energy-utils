@@ -96,7 +96,7 @@ def main():
         with open(args.config, "w") as configfile:
             config.write(configfile)
 
-    temp = get_current_temperature(id=175)
+    temp = get_current_temperature(model="F824")
     if temp is not None:
         logging.debug("Temperature %.1f C", temp)
 
