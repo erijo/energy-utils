@@ -105,7 +105,7 @@ class Home:
 
         def to_tuple(cls, node):
             return cls(
-                datetime.strptime(node["from"], "%Y-%m-%dT%H:%M:%S%z"),
+                datetime.strptime(node["from"], "%Y-%m-%dT%H:%M:%S.%f%z"),
                 int(node[name] * 1000),
                 node["unitPrice"],
                 round(node[money], 2),
